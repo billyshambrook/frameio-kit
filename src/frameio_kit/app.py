@@ -45,6 +45,7 @@ from starlette.types import Receive, Scope, Send
 
 from .client import Client
 from .events import ActionEvent, WebhookEvent
+from .oauth import OAuthManager, TokenStore
 from .security import verify_signature
 from .ui import Form, Message
 
@@ -81,9 +82,18 @@ class App:
     Attributes:
         client: An authenticated API client for making calls back to the
             Frame.io API, available if an `token` was provided.
+        oauth: An OAuth manager for user authorization flows, available if
+            OAuth credentials were provided.
     """
 
-    def __init__(self, token: str | None = None) -> None:
+    def __init__(
+        self,
+        token: str | None = None,
+        oauth_client_id: str | None = None,
+        oauth_client_secret: str | None = None,
+        oauth_redirect_uri: str | None = None,
+        token_store: TokenStore | None = None,
+    ) -> None:
         """Initializes the FrameApp.
 
         Args:
@@ -92,11 +102,26 @@ class App:
                 API calls made via the `app.client` property. It is highly
                 recommended to load this from a secure source, such as an
                 environment variable.
+            oauth_client_id: OAuth client ID for user authorization flows.
+            oauth_client_secret: OAuth client secret for user authorization flows.
+            oauth_redirect_uri: The redirect URI for OAuth callbacks.
+            token_store: Custom token storage implementation for persisting
+                user tokens.
         """
         self._token = token
         self._api_client: Client | None = None
         self._webhook_handlers: dict[str, _HandlerRegistration] = {}
         self._action_handlers: dict[str, _HandlerRegistration] = {}
+        self._oauth_manager: OAuthManager | None = None
+
+        # Initialize OAuth manager if credentials are provided
+        if oauth_client_id and oauth_client_secret and oauth_redirect_uri:
+            self._oauth_manager = OAuthManager(
+                client_id=oauth_client_id,
+                client_secret=oauth_client_secret,
+                redirect_uri=oauth_redirect_uri,
+                token_store=token_store,
+            )
 
         self._asgi_app = self._create_asgi_app()
 
@@ -128,6 +153,61 @@ class App:
         if self._api_client is None:
             self._api_client = Client(token=self._token)
         return self._api_client
+
+    @property
+    def oauth(self) -> OAuthManager:
+        """Provides access to the OAuth manager for user authorization.
+
+        This property gives access to OAuth functionality for obtaining user
+        tokens. Use this to generate authorization URLs and handle token exchange.
+
+        Example:
+            ```python
+            @app.on_action("my_action", name="My Action", ...)
+            async def handle_action(event: ActionEvent):
+                # Generate an authorization URL for the user
+                auth_url = app.oauth.get_authorization_url(
+                    state=f"{event.user.id}:{event.interaction_id}"
+                )
+                return Form(
+                    title="Authorization Required",
+                    description="Please authorize to continue",
+                    fields=[LinkField(label="Authorize", name="auth", value=auth_url)]
+                )
+            ```
+
+        Returns:
+            The OAuthManager instance.
+
+        Raises:
+            RuntimeError: If OAuth credentials were not provided to App.
+        """
+        if not self._oauth_manager:
+            raise RuntimeError(
+                "OAuth not configured. Provide oauth_client_id, oauth_client_secret, "
+                "and oauth_redirect_uri when initializing App."
+            )
+        return self._oauth_manager
+
+    async def get_user_client(self, user_id: str) -> Client:
+        """Create an API client authenticated with a user's token.
+
+        This method retrieves the stored token for a user and creates a Client
+        instance that makes API calls on behalf of that user.
+
+        Args:
+            user_id: The Frame.io user ID.
+
+        Returns:
+            A Client instance authenticated with the user's access token.
+
+        Raises:
+            RuntimeError: If OAuth is not configured or no token is found for the user.
+        """
+        token = await self.oauth.get_user_token(user_id)
+        if not token:
+            raise RuntimeError(f"No token found for user {user_id}. User needs to authorize.")
+        return Client(token=token)
 
     def on_webhook(self, event_type: str | list[str], secret: str):
         """Decorator to register a function as a webhook event handler.
@@ -189,18 +269,72 @@ class App:
 
         if self._api_client:
             await self._api_client.close()
+        if self._oauth_manager:
+            await self._oauth_manager.close()
 
     def _create_asgi_app(self) -> Starlette:
         """Builds the Starlette ASGI application with routes and lifecycle hooks."""
+        routes = [Route("/", self._handle_request, methods=["POST"])]
+        
+        # Add OAuth callback route if OAuth is configured
+        if self._oauth_manager:
+            routes.append(Route("/oauth/callback", self._handle_oauth_callback, methods=["GET"]))
+        
         return Starlette(
             debug=True,
-            routes=[Route("/", self._handle_request, methods=["POST"])],
+            routes=routes,
             lifespan=self._lifespan,
         )
 
     def _find_handler(self, event_type: str) -> _HandlerRegistration | None:
         """Finds the registered handler for a given event type."""
         return self._webhook_handlers.get(event_type) or self._action_handlers.get(event_type)
+
+    async def _handle_oauth_callback(self, request: Request) -> Response:
+        """Handles the OAuth callback from Frame.io.
+        
+        This endpoint receives the authorization code from Frame.io and exchanges
+        it for access and refresh tokens, then stores them using the configured
+        token store.
+        """
+        if not self._oauth_manager:
+            return Response("OAuth not configured.", status_code=500)
+
+        # Get the authorization code and state from query parameters
+        code = request.query_params.get("code")
+        state = request.query_params.get("state")
+        error = request.query_params.get("error")
+
+        if error:
+            return Response(f"OAuth error: {error}", status_code=400)
+
+        if not code:
+            return Response("Missing authorization code.", status_code=400)
+
+        try:
+            # Exchange the code for tokens
+            token_data = await self._oauth_manager.exchange_code_for_token(code)
+
+            # Parse the state to get user_id if included
+            # State format should be "user_id:interaction_id" or just "user_id"
+            user_id = None
+            if state:
+                user_id = state.split(":")[0]
+
+            # Store the token if we have a user_id and token store
+            if user_id and self._oauth_manager.token_store:
+                await self._oauth_manager.token_store.save_token(
+                    user_id, token_data.model_dump()
+                )
+
+            return Response(
+                "Authorization successful! You can close this window and return to Frame.io.",
+                status_code=200,
+            )
+
+        except Exception as e:
+            print(f"Error during OAuth callback: {e}")
+            return Response("OAuth authorization failed.", status_code=500)
 
     async def _handle_request(self, request: Request) -> Response:
         """The main ASGI request handler, refactored for clarity."""

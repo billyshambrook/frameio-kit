@@ -139,6 +139,107 @@ async def add_confirmation_comment(event: WebhookEvent):
     print("Successfully added comment: ", response.data.id)
 ```
 
+## 🔐 OAuth User Authorization
+
+For custom actions that need to act on behalf of a user, frameio-kit provides full OAuth 2.0 support. This allows your app to obtain user tokens and perform actions with user permissions.
+
+### Setting Up OAuth
+
+First, implement the `TokenStore` interface to persist user tokens in your database:
+
+```python
+from frameio_kit import App, TokenStore, ActionEvent, Form, LinkField
+
+class DatabaseTokenStore(TokenStore):
+    """Store tokens in your database."""
+    
+    async def save_token(self, user_id: str, token_data: dict):
+        # Save to your database
+        await db.users.update_one(
+            {"frameio_user_id": user_id},
+            {"$set": {"frameio_token": token_data}},
+            upsert=True
+        )
+    
+    async def get_token(self, user_id: str) -> dict | None:
+        # Retrieve from your database
+        user = await db.users.find_one({"frameio_user_id": user_id})
+        return user.get("frameio_token") if user else None
+
+# Initialize the app with OAuth credentials
+app = App(
+    token=os.getenv("FRAMEIO_APP_TOKEN"),  # Your app token
+    oauth_client_id=os.getenv("OAUTH_CLIENT_ID"),
+    oauth_client_secret=os.getenv("OAUTH_CLIENT_SECRET"),
+    oauth_redirect_uri="https://yourapp.com/oauth/callback",
+    token_store=DatabaseTokenStore()
+)
+```
+
+### OAuth Flow in Custom Actions
+
+Here's a complete example of a custom action that requires user authorization:
+
+```python
+@app.on_action(
+    event_type="export.asset",
+    name="Export to My Service",
+    description="Export this asset to my external service",
+    secret=os.getenv("ACTION_SECRET")
+)
+async def export_asset(event: ActionEvent):
+    """Export an asset using user authorization."""
+    
+    # Check if we have a token for this user
+    user_token = await app.oauth.get_user_token(event.user.id)
+    
+    if not user_token:
+        # User needs to authorize - show them a link
+        auth_url = app.oauth.get_authorization_url(
+            state=f"{event.user.id}:{event.interaction_id}"
+        )
+        return Form(
+            title="Authorization Required",
+            description="Please authorize this app to access your Frame.io account.",
+            fields=[
+                LinkField(
+                    label="Click here to authorize",
+                    name="auth_url",
+                    value=auth_url
+                )
+            ]
+        )
+    
+    # User is authorized - perform the action on their behalf
+    user_client = await app.get_user_client(event.user.id)
+    
+    # Now you can make API calls as the user
+    asset = await user_client.assets.get(
+        account_id=event.account_id,
+        asset_id=event.resource_id
+    )
+    
+    # Do something with the asset...
+    # export_to_external_service(asset)
+    
+    return Message(
+        title="Export Complete",
+        description=f"Successfully exported {asset.name}"
+    )
+```
+
+### How It Works
+
+1. **Initial Request**: When a user triggers the action without authorization, your handler checks for a token and returns a Form with an authorization link.
+
+2. **User Authorization**: The user clicks the link, authorizes your app on Frame.io, and is redirected back to your app's OAuth callback endpoint (`/oauth/callback`).
+
+3. **Token Storage**: The callback handler automatically exchanges the authorization code for tokens and stores them using your `TokenStore`.
+
+4. **Subsequent Requests**: Next time the user triggers the action, your app retrieves their token and creates a user-specific client to perform actions on their behalf.
+
+5. **Token Refresh**: The OAuth manager handles token refresh automatically when tokens expire (developers should implement expiration checking in their `TokenStore`).
+
 
 ## Contributing
 
