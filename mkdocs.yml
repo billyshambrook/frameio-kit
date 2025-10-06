@@ -24,30 +24,30 @@ theme:
         icon: material/brightness-4
         name: Switch to light mode
   features:
-  - announce.dismiss
-  - content.action.edit
-  - content.action.view
-  - content.code.annotate
-  - content.code.copy
-  - content.tooltips
-  - navigation.footer
-  - navigation.instant.preview
-  - navigation.path
-  - navigation.sections
-  - navigation.tabs
-  - navigation.tabs.sticky
-  - navigation.top
-  - search.highlight
-  - search.suggest
-  - toc.follow
+    - announce.dismiss
+    - content.action.edit
+    - content.action.view
+    - content.code.annotate
+    - content.code.copy
+    - content.tooltips
+    - navigation.footer
+    - navigation.instant.preview
+    - navigation.path
+    - navigation.sections
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.top
+    - search.highlight
+    - search.suggest
+    - toc.follow
 
 nav:
   - Home: index.md
   - Usage:
-    - Getting Started: usage/getting_started.md
-    - Webhooks: usage/webhooks.md
-    - Custom Actions: usage/custom_actions.md
-    - Client API: usage/client_api.md
+      - Getting Started: usage/getting_started.md
+      - Webhooks: usage/webhooks.md
+      - Custom Actions: usage/custom_actions.md
+      - Client API: usage/client_api.md
   - API Reference: api_reference.md
 
 plugins:
