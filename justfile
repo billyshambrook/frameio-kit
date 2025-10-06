@@ -9,3 +9,6 @@ test: build
 
 static-checks: build
     uv run pre-commit run --all-files
+
+docs:
+    uv run mkdocs serve
