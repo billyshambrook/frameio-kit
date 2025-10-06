@@ -1,0 +1,73 @@
+name: 🐛 Bug Report
+description: Report a bug or unexpected behavior in Framekit
+labels: [bug, pending]
+
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for contributing to Framekit! 🙏
+
+  - type: markdown
+    attributes:
+      value: |
+        ### Before you submit
+
+        To help us help you, please:
+
+        - 🔄 **Make sure you're testing on the latest version of Framekit** - many issues are already fixed in newer versions
+        - 🔍 **Check if someone else has already reported this issue** or if it's been fixed on the main branch
+        - 📋 **You MUST include a copy/pasteable and properly formatted MRE** (minimal reproducible example) below or your issue may be closed without response
+
+        Thanks for helping to make Framekit better! 🚀
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: |
+        Please explain what you're experiencing and what you would expect to happen instead.
+
+        Provide as much detail as possible to help us understand and solve your problem quickly.
+    validations:
+      required: true
+
+  - type: textarea
+    id: example
+    attributes:
+      label: Example Code
+      description: >
+        If applicable, please provide a self-contained,
+        [minimal, reproducible example](https://stackoverflow.com/help/minimal-reproducible-example)
+        demonstrating the bug. If possible, your example should be a single-file script.
+
+      placeholder: |
+        import os
+
+        import uvicorn
+        from framekit import ActionEvent, App, Message, WebhookEvent
+
+        app = App()
+
+        @app.on_webhook(event_type="file.ready", secret=os.environ["WEBHOOK_SECRET"])
+        async def on_file_ready(event: WebhookEvent):
+            """Runs when a file finishes transcoding."""
+            ...
+
+        @app.on_action(event_type="greeting", name="Greeting", secret=os.environ["ACTION_SECRET"])
+        async def on_greeting(event: ActionEvent):
+            """Says hello"""
+            ...
+
+        if __name__ == "__main__":
+            uvicorn.run(app, host="127.0.0.1", port=8000)
+      render: Python
+
+  - type: textarea
+    id: version
+    attributes:
+      label: Version Information
+      description: |
+        Please tell us about your Framekit version, Python version, and OS, as well as any other relevant details about your environment.
+      render: Text
+    validations:
+      required: true
