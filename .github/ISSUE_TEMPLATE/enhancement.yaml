@@ -1,11 +1,11 @@
 name: 💡 Enhancement Request
-description: Suggest an idea or improvement for Framekit
+description: Suggest an idea or improvement for frameio-kit
 labels: [enhancement, pending]
 
 body:
   - type: markdown
     attributes:
-      value: Thanks for contributing to Framekit! 🙏
+      value: Thanks for contributing to frameio-kit! 🙏
 
   - type: markdown
     attributes:
@@ -18,7 +18,7 @@ body:
         - 💭 **Think about the broader impact** - how would this affect other users?
         - 📋 **Consider implementation complexity** - is this a small change or a major feature?
 
-        Thanks for helping to make Framekit better! 🚀
+        Thanks for helping to make frameio-kit better! 🚀
 
   - type: textarea
     id: description
@@ -28,7 +28,7 @@ body:
         Please describe the enhancement:
 
         - What problem or use case would it solve?
-        - How would it improve your workflow or experience with Framekit?
+        - How would it improve your workflow or experience with frameio-kit?
         - Are there any alternative solutions you've considered?
     validations:
       required: true

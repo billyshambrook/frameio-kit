@@ -44,7 +44,7 @@ jobs:
           cache-dependency-glob: "uv.lock"
           python-version: ${{ matrix.python-version }}
 
-      - name: Install Framekit
+      - name: Install frameio-kit
         # run with frozen to use the current lockfile; static checks will determine if it needs updating
         run: uv sync --frozen
 

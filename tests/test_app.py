@@ -4,9 +4,9 @@ import time
 import httpx
 import pytest
 
-from framekit.app import App
-from framekit.events import ActionEvent, WebhookEvent
-from framekit.ui import Message
+from frameio_kit.app import App
+from frameio_kit.events import ActionEvent, WebhookEvent
+from frameio_kit.ui import Message
 
 
 @pytest.fixture

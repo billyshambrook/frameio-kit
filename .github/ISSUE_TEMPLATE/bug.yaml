@@ -1,11 +1,11 @@
 name: 🐛 Bug Report
-description: Report a bug or unexpected behavior in Framekit
+description: Report a bug or unexpected behavior in frameio-kit
 labels: [bug, pending]
 
 body:
   - type: markdown
     attributes:
-      value: Thanks for contributing to Framekit! 🙏
+      value: Thanks for contributing to frameio-kit! 🙏
 
   - type: markdown
     attributes:
@@ -14,11 +14,11 @@ body:
 
         To help us help you, please:
 
-        - 🔄 **Make sure you're testing on the latest version of Framekit** - many issues are already fixed in newer versions
+        - 🔄 **Make sure you're testing on the latest version of frameio-kit** - many issues are already fixed in newer versions
         - 🔍 **Check if someone else has already reported this issue** or if it's been fixed on the main branch
         - 📋 **You MUST include a copy/pasteable and properly formatted MRE** (minimal reproducible example) below or your issue may be closed without response
 
-        Thanks for helping to make Framekit better! 🚀
+        Thanks for helping to make frameio-kit better! 🚀
 
   - type: textarea
     id: description
@@ -44,7 +44,7 @@ body:
         import os
 
         import uvicorn
-        from framekit import ActionEvent, App, Message, WebhookEvent
+        from frameio_kit import ActionEvent, App, Message, WebhookEvent
 
         app = App()
 
@@ -67,7 +67,7 @@ body:
     attributes:
       label: Version Information
       description: |
-        Please tell us about your Framekit version, Python version, and OS, as well as any other relevant details about your environment.
+        Please tell us about your frameio-kit version, Python version, and OS, as well as any other relevant details about your environment.
       render: Text
     validations:
       required: true

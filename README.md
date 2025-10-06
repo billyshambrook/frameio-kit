@@ -1,12 +1,12 @@
-# Framekit: The Python Framework for Building Frame.io Apps
+# frameio-kit: The Python Framework for Building Frame.io Apps
 
-Framekit is a modern, asynchronous Python framework for building robust and scalable integrations with Frame.io. It handles the complex plumbing of webhooks, custom actions, and authentication, allowing you to focus on your application's unique business logic.
+frameio-kit is a modern, asynchronous Python framework for building robust and scalable integrations with Frame.io. It handles the complex plumbing of webhooks, custom actions, and authentication, allowing you to focus on your application's unique business logic.
 
 ```python
 import os
 
 import uvicorn
-from framekit import ActionEvent, App, Message, WebhookEvent
+from frameio_kit import ActionEvent, App, Message, WebhookEvent
 
 app = App()
 
@@ -27,17 +27,17 @@ if __name__ == "__main__":
 
 ## Installation
 
-We recommend using [uv](https://docs.astral.sh/uv/) to install and manage Framekit.
+We recommend using [uv](https://docs.astral.sh/uv/) to install and manage frameio-kit.
 
-To add Framekit to your project, run:
+To add frameio-kit to your project, run:
 
 ```bash
-uv add framekit
+uv add frameio-kit
 ```
 
 Alternatively, you can install it directly with pip:
 ```bash
-pip install framekit
+pip install frameio-kit
 ```
 
 
@@ -50,8 +50,8 @@ Webhooks are automated, non-interactive messages from Frame.io. Use the @app.on_
 
 Example:
 ```python
-from framekit import App, WebhookEvent
-from framekit.ui import Message
+from frameio_kit import App, WebhookEvent
+from frameio_kit.ui import Message
 
 app = App()
 
@@ -73,7 +73,7 @@ The key feature is returning a Form to ask the user for input. When the user sub
 First, define a handler that returns a Form when the user clicks the action.
 
 ```python
-from framekit.ui import Form, SelectField, SelectOption
+from frameio_kit.ui import Form, SelectField, SelectOption
 
 LANGUAGES = [SelectOption(name=lang, value=val) for lang, val in [("English", "en"), ("Spanish", "es")]]
 
@@ -155,8 +155,8 @@ Contributions are the core of open source! We welcome improvements and features.
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/billyshambrook/framekit.git
-cd framekit
+git clone https://github.com/billyshambrook/frameio-kit.git
+cd frameio-kit
 ```
 
 2. Create and sync the environment:
@@ -171,7 +171,7 @@ This installs all dependencies, including dev tools.
 
 ### Unit Tests
 
-Framekit uses pytest for testing. To run the tests, run:
+frameio-kit uses pytest for testing. To run the tests, run:
 
 ```bash
 uv run pytest
@@ -179,7 +179,7 @@ uv run pytest
 
 ### Static Checks
 
-Framekit uses `pre-commit` for code formatting, linting and type checking.
+frameio-kit uses `pre-commit` for code formatting, linting and type checking.
 
 Install the pre-commit hooks:
 
@@ -200,6 +200,6 @@ uv run pre-commit run --all-files
 3. Make your changes, including tests and documentation updates.
 4. Ensure tests and pre-commit hooks pass.
 5. Commit your changes and push to your fork.
-6. Open a pull request against the main branch of billyshambrook/framekit.
+6. Open a pull request against the main branch of billyshambrook/frameio-kit.
 
 Please open an issue or discussion for questions or suggestions before starting significant work!
