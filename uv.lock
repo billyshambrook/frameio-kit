@@ -109,7 +109,7 @@ wheels = [
 ]
 
 [[package]]
-name = "framekit"
+name = "frameio-kit"
 version = "0.0.0"
 source = { editable = "." }
 dependencies = [

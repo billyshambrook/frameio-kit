@@ -14,9 +14,9 @@ Example:
     import os
 
     import uvicorn
-    from framekit.app import App
-    from framekit.events import WebhookEvent
-    from framekit.ui import Message
+    from frameio_kit.app import App
+    from frameio_kit.events import WebhookEvent
+    from frameio_kit.ui import Message
 
     # Initialize the app, optionally with a token for API calls
     app = App(token=os.getenv("FRAMEIO_TOKEN"))

@@ -3,7 +3,7 @@ import time
 import pytest
 from starlette.datastructures import Headers
 
-from framekit.security import TIMESTAMP_TOLERANCE_SECONDS, verify_signature
+from frameio_kit.security import TIMESTAMP_TOLERANCE_SECONDS, verify_signature
 
 
 @pytest.fixture

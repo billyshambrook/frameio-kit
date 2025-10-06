@@ -1,5 +1,5 @@
 [project]
-name = "framekit"
+name = "frameio_kit"
 version = "0.0.0"
 description = "A Python framework for building Frame.io apps"
 readme = "README.md"
@@ -34,7 +34,7 @@ dev = [
 ]
 
 [project.urls]
-Repository = "https://github.com/billyshambrook/framekit"
+Repository = "https://github.com/billyshambrook/frameio-kit"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
