@@ -2,7 +2,6 @@ site_name: frameio-kit
 site_url: "https://billyshambrook.github.io/frameio-kit/"
 repo_name: billyshambrook/frameio-kit
 repo_url: https://github.com/billyshambrook/frameio-kit
-site_dir: "docs"
 watch: [mkdocs.yml, docs]
 copyright: Copyright &copy; 2025 Billy Shambrook
 edit_uri: edit/main/docs/
