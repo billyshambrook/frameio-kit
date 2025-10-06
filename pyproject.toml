@@ -18,6 +18,28 @@ classifiers = [
 	"License :: OSI Approved :: MIT License",
 	"Operating System :: OS Independent",
 ]
+keywords = [
+	"frameio",
+	"frame-io",
+    "frame.io",
+	"video",
+	"collaboration",
+	"sdk",
+	"api",
+	"client",
+	"integration",
+	"webhook",
+	"webhooks",
+	"custom-actions",
+	"asgi",
+	"starlette",
+	"async",
+	"asyncio",
+	"automation",
+	"workflow",
+	"media",
+	"events",
+]
 
 [build-system]
 requires = ["uv_build>=0.8.22,<0.9.0"]
@@ -25,6 +47,9 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "mkdocs>=1.6.1",
+    "mkdocs-material>=9.6.21",
+    "mkdocstrings-python>=1.18.2",
     "pre-commit>=4.3.0",
     "pyrefly>=0.35.0",
     "pytest>=8.4.2",
