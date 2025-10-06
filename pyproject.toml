@@ -11,7 +11,8 @@ dependencies = [
     "pydantic>=2.11.10",
     "starlette>=0.48.0",
 ]
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 classifiers = [
 	"Programming Language :: Python :: 3.13",
 	"Programming Language :: Python :: Implementation :: CPython",
@@ -59,7 +60,12 @@ dev = [
 ]
 
 [project.urls]
+Homepage = "https://billyshambrook.github.io/frameio-kit/"
+Documentation = "https://billyshambrook.github.io/frameio-kit/"
+Changelog = "https://github.com/billyshambrook/frameio-kit/releases"
 Repository = "https://github.com/billyshambrook/frameio-kit"
+Issues = "https://github.com/billyshambrook/frameio-kit/issues"
+Discussions = "https://github.com/billyshambrook/frameio-kit/discussions"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
