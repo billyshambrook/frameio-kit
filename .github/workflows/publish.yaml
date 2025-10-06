@@ -1,4 +1,4 @@
-name: Publish Framekit to PyPI
+name: Publish frameio-kit to PyPI
 on:
   release:
     types: [published]
@@ -10,6 +10,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       id-token: write # For PyPI's trusted publishing
+    environment:
+      name: pypi
+      url: https://pypi.org/project/frameio-kit/
     steps:
       - name: Checkout
         uses: actions/checkout@v5
