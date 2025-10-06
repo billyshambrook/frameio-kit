@@ -98,7 +98,7 @@ app = App(
 Your action handler should check for user authorization and handle both scenarios:
 
 ```python
-from frameio_kit import ActionEvent, Message
+from frameio_kit import ActionEvent, Message, RequireAuth
 
 @app.on_action(
     event_type="my_action",
@@ -111,15 +111,8 @@ async def my_action(event: ActionEvent):
     user_token = await app.oauth.get_user_token(event.user.id)
     
     if not user_token:
-        # Show authorization message with URL
-        auth_url = app.oauth.get_authorization_url(
-            state=f"{event.user.id}:{event.interaction_id}"
-        )
-        return Message(
-            title="Authorization Required",
-            description=f"Please visit this URL to authorize: {auth_url}\n\n"
-                       f"After authorizing, trigger this action again."
-        )
+        # Simply return RequireAuth() - framework handles the rest!
+        return RequireAuth()
     
     # User is authorized - proceed with action
     user_client = await app.get_user_client(event.user.id)
@@ -138,6 +131,14 @@ async def my_action(event: ActionEvent):
     )
 ```
 
+**Optional**: Customize the authorization message:
+```python
+return RequireAuth(
+    title="Connect Your Account",
+    description="To use this feature, we need access to your Frame.io account."
+)
+```
+
 ## OAuth Flow Sequence
 
 Here's what happens during the OAuth flow:
@@ -146,7 +147,9 @@ Here's what happens during the OAuth flow:
 1. User triggers custom action
    └─> Your handler checks for token
        └─> No token found
-           └─> Return Message with authorization URL
+           └─> Return RequireAuth()
+               └─> Framework generates auth URL
+                   └─> Framework returns Message to user
 
 2. User visits authorization URL
    └─> Redirected to Frame.io OAuth page
@@ -166,22 +169,16 @@ Here's what happens during the OAuth flow:
                └─> Performs action with user permissions
 ```
 
-## State Parameter
+## State Parameter (Automatic)
 
-The `state` parameter is crucial for security and correlation:
-
-```python
-auth_url = app.oauth.get_authorization_url(
-    state=f"{event.user.id}:{event.interaction_id}"
-)
-```
+When you return `RequireAuth()`, the framework automatically generates the `state` parameter for security and correlation:
 
 **Format**: `"user_id:interaction_id"`
 
-- **user_id**: Used to associate the token with the correct user
-- **interaction_id**: Can help correlate the authorization with the original action
+- **user_id**: Associates the token with the correct user
+- **interaction_id**: Correlates the authorization with the original action
 
-The callback handler automatically parses this and saves the token for the user.
+The callback handler automatically parses this and saves the token for the user. You don't need to handle this manually!
 
 ## Token Refresh
 

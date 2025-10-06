@@ -6,23 +6,20 @@ and token refresh flows required for user-based authentication.
 
 Example:
     ```python
-    from frameio_kit import App, TokenStore
+    from frameio_kit import App, RequireAuth
 
-    class MyTokenStore(TokenStore):
-        async def save_token(self, user_id: str, token_data: dict):
-            # Save to your database
-            await db.save(user_id, token_data)
-
-        async def get_token(self, user_id: str) -> dict | None:
-            # Retrieve from your database
-            return await db.get(user_id)
-
-    app = App(
-        oauth_client_id="your_client_id",
-        oauth_client_secret="your_client_secret",
-        oauth_redirect_uri="https://yourapp.com/oauth/callback",
-        token_store=MyTokenStore()
-    )
+    @app.on_action(...)
+    async def my_action(event: ActionEvent):
+        # Check if user has authorized
+        user_token = await app.oauth.get_user_token(event.user.id)
+        
+        if not user_token:
+            # Simply return RequireAuth() - framework handles the rest
+            return RequireAuth()
+        
+        # User is authorized - proceed with action
+        user_client = await app.get_user_client(event.user.id)
+        # ... perform action ...
     ```
 """
 
@@ -32,6 +29,51 @@ from urllib.parse import urlencode
 
 import httpx
 from pydantic import BaseModel
+
+
+class RequireAuth:
+    """Signal that user authorization is required.
+
+    Return this from an action handler to indicate that the user needs to
+    authorize. The framework will automatically generate an authorization URL
+    and return a Message to the user with instructions.
+
+    Attributes:
+        title: Optional custom title for the authorization message.
+        description: Optional custom description for the authorization message.
+            If not provided, a default message with the auth URL is generated.
+
+    Example:
+        ```python
+        @app.on_action(...)
+        async def my_action(event: ActionEvent):
+            user_token = await app.oauth.get_user_token(event.user.id)
+            
+            if not user_token:
+                return RequireAuth()
+            
+            # ... proceed with action ...
+        ```
+
+        With custom message:
+        ```python
+        return RequireAuth(
+            title="Connect Your Account",
+            description="To export files, we need access to your Frame.io account."
+        )
+        ```
+    """
+
+    def __init__(self, title: str | None = None, description: str | None = None):
+        """Initialize RequireAuth signal.
+
+        Args:
+            title: Optional custom title for the authorization message.
+            description: Optional custom description template. The auth URL
+                will be appended to this description automatically.
+        """
+        self.title = title
+        self.description = description
 
 
 class TokenData(BaseModel):

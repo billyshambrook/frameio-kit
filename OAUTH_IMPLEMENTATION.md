@@ -39,19 +39,25 @@ The OAuth implementation enables custom actions to:
 
 ### 1. Initial Action Trigger (No Authorization)
 
-User triggers custom action → Handler detects no token → Returns Message with authorization URL
+User triggers custom action → Handler detects no token → Returns `RequireAuth()` → Framework generates auth URL and Message
 
 ```python
 if not user_token:
-    auth_url = app.oauth.get_authorization_url(
-        state=f"{event.user.id}:{event.interaction_id}"
-    )
-    return Message(
-        title="Authorization Required",
-        description=f"Please visit this URL to authorize: {auth_url}\n\n"
-                   f"After authorizing, trigger this action again."
-    )
+    # Simply return RequireAuth() - framework handles everything!
+    return RequireAuth()
+
+# Or with custom message:
+return RequireAuth(
+    title="Connect Your Account",
+    description="To export files, we need access to your Frame.io account."
+)
 ```
+
+The framework automatically:
+- Generates the OAuth authorization URL
+- Includes proper state parameter (user_id:interaction_id)
+- Constructs a Message with the URL
+- Returns it to the user
 
 ### 2. User Authorization
 

@@ -45,7 +45,7 @@ from starlette.types import Receive, Scope, Send
 
 from .client import Client
 from .events import ActionEvent, WebhookEvent
-from .oauth import OAuthManager, TokenStore
+from .oauth import OAuthManager, RequireAuth, TokenStore
 from .security import verify_signature
 from .ui import Form, Message
 
@@ -56,8 +56,8 @@ from .ui import Form, Message
 WebhookHandlerFunc = Callable[[WebhookEvent], Awaitable[Message | None]]
 
 # A handler for a custom action, which is interactive.
-# It can return a Message, a Form for further input, or nothing.
-ActionHandlerFunc = Callable[[ActionEvent], Awaitable[Message | Form | None]]
+# It can return a Message, a Form for further input, RequireAuth for OAuth, or nothing.
+ActionHandlerFunc = Callable[[ActionEvent], Awaitable[Message | Form | RequireAuth | None]]
 
 
 @dataclass
@@ -364,6 +364,43 @@ class App:
             else:
                 action_handler = cast(ActionHandlerFunc, handler_reg.func)
                 response_data = await action_handler(cast(ActionEvent, event))
+
+            # Handle RequireAuth response - automatically generate auth message
+            if isinstance(response_data, RequireAuth):
+                if not self._oauth_manager:
+                    return Response(
+                        "OAuth not configured. Cannot handle RequireAuth response.",
+                        status_code=500
+                    )
+                
+                # Cast event to ActionEvent for OAuth flow
+                action_event = cast(ActionEvent, event)
+                
+                # Generate authorization URL
+                auth_url = self._oauth_manager.get_authorization_url(
+                    state=f"{action_event.user.id}:{action_event.interaction_id}"
+                )
+                
+                # Construct the authorization message
+                title = response_data.title or "Authorization Required"
+                
+                if response_data.description:
+                    # User provided custom description - append auth URL
+                    description = (
+                        f"{response_data.description}\n\n"
+                        f"Please visit this URL to authorize: {auth_url}\n\n"
+                        f"After authorizing, trigger this action again."
+                    )
+                else:
+                    # Use default description
+                    description = (
+                        f"This action requires your authorization to access your Frame.io account.\n\n"
+                        f"Please visit this URL to authorize: {auth_url}\n\n"
+                        f"After authorizing, trigger this action again."
+                    )
+                
+                auth_message = Message(title=title, description=description)
+                return JSONResponse(auth_message.model_dump(exclude_none=True))
 
             if isinstance(response_data, Message) or isinstance(response_data, Form):
                 return JSONResponse(response_data.model_dump(exclude_none=True))

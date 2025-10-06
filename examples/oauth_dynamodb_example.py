@@ -42,7 +42,7 @@ Setup:
 import os
 
 import uvicorn
-from frameio_kit import ActionEvent, App, DynamoDBTokenStore, Message
+from frameio_kit import ActionEvent, App, DynamoDBTokenStore, Message, RequireAuth
 
 # Initialize DynamoDB token store
 token_store = DynamoDBTokenStore(
@@ -86,16 +86,11 @@ async def create_proxy(event: ActionEvent):
         user_token = None
 
     if not user_token:
-        # User needs to authorize
+        # User needs to authorize - simply return RequireAuth()
         print(f"⚠️  User {event.user.id} needs to authorize")
 
-        auth_url = app.oauth.get_authorization_url(state=f"{event.user.id}:{event.interaction_id}")
-
-        return Message(
-            title="Authorization Required",
-            description=f"To create proxies, we need permission to access your Frame.io account.\n\n"
-            f"Please visit this URL to authorize: {auth_url}\n\n"
-            f"After authorizing, trigger this action again.",
+        return RequireAuth(
+            description="To create proxies, we need permission to access your Frame.io account."
         )
 
     # User is authorized - proceed with proxy creation
@@ -133,11 +128,9 @@ async def create_proxy(event: ActionEvent):
         # Check if it's an authorization error
         if "401" in str(e) or "Unauthorized" in str(e):
             # Token might be expired - prompt for re-authorization
-            auth_url = app.oauth.get_authorization_url(state=f"{event.user.id}:{event.interaction_id}")
-
-            return Message(
+            return RequireAuth(
                 title="Re-authorization Required",
-                description=f"Your authorization has expired. Please authorize again: {auth_url}",
+                description="Your authorization has expired. Please authorize again."
             )
 
         return Message(
@@ -162,13 +155,9 @@ async def check_authorization(event: ActionEvent):
             description="You have authorized this app. You can use all features!",
         )
     else:
-        auth_url = app.oauth.get_authorization_url(state=f"{event.user.id}:{event.interaction_id}")
-
-        return Message(
+        return RequireAuth(
             title="❌ Not Authorized",
-            description=f"You haven't authorized this app yet.\n\n"
-            f"Authorize here: {auth_url}\n\n"
-            f"Then check again!",
+            description="You haven't authorized this app yet."
         )
 
 

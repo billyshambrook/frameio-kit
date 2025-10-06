@@ -25,7 +25,7 @@ DynamoDBTokenStore or implement your own persistent storage.
 import os
 
 import uvicorn
-from frameio_kit import ActionEvent, App, InMemoryTokenStore, Message
+from frameio_kit import ActionEvent, App, InMemoryTokenStore, Message, RequireAuth
 
 # Initialize the app with OAuth configuration
 # For production, replace InMemoryTokenStore with DynamoDBTokenStore or your own implementation
@@ -58,19 +58,12 @@ async def export_to_service(event: ActionEvent):
         user_token = None
 
     if not user_token:
-        # User hasn't authorized yet - show them the authorization link
+        # User hasn't authorized yet - simply return RequireAuth()
+        # The framework automatically generates the auth URL and message
         print(f"⚠️  User {event.user.id} needs to authorize")
 
-        # Include user_id and interaction_id in state for proper correlation
-        auth_url = app.oauth.get_authorization_url(
-            state=f"{event.user.id}:{event.interaction_id}"
-        )
-
-        return Message(
-            title="Authorization Required",
-            description=f"To export assets, we need your permission to access your Frame.io account.\n\n"
-            f"Please visit this URL to authorize: {auth_url}\n\n"
-            f"After authorizing, trigger this action again to complete the export.",
+        return RequireAuth(
+            description="To export assets, we need your permission to access your Frame.io account."
         )
 
     # User is authorized - perform the action with their token

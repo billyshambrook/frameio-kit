@@ -228,14 +228,8 @@ async def export_asset(event: ActionEvent):
     user_token = await app.oauth.get_user_token(event.user.id)
     
     if not user_token:
-        # User needs to authorize - provide them with the authorization URL
-        auth_url = app.oauth.get_authorization_url(
-            state=f"{event.user.id}:{event.interaction_id}"
-        )
-        return Message(
-            title="Authorization Required",
-            description=f"This action requires your authorization. Please visit the following URL to authorize: {auth_url}\n\nAfter authorizing, trigger this action again."
-        )
+        # Simply return RequireAuth() - the framework handles the rest!
+        return RequireAuth()
     
     # User is authorized - perform the action on their behalf
     user_client = await app.get_user_client(event.user.id)
@@ -257,7 +251,7 @@ async def export_asset(event: ActionEvent):
 
 ### How It Works
 
-1. **Initial Request**: When a user triggers the action without authorization, your handler checks for a token and returns a Message with an authorization URL.
+1. **Initial Request**: When a user triggers the action without authorization, your handler simply returns `RequireAuth()`. The framework automatically generates an authorization URL and shows it to the user in a message.
 
 2. **User Authorization**: The user visits the authorization URL, approves your app on Frame.io, and is redirected back to your app's OAuth callback endpoint (`/oauth/callback`).
 
@@ -266,6 +260,17 @@ async def export_asset(event: ActionEvent):
 4. **Subsequent Requests**: The user triggers the action again. This time, your app retrieves their token and creates a user-specific client to perform actions on their behalf.
 
 5. **Token Refresh**: The OAuth manager handles token refresh automatically when tokens expire (developers should implement expiration checking in their `TokenStore`).
+
+### Custom Authorization Messages
+
+You can customize the authorization message by passing parameters to `RequireAuth()`:
+
+```python
+return RequireAuth(
+    title="Connect Your Account",
+    description="To export files, we need access to your Frame.io account."
+)
+```
 
 
 ## Contributing
