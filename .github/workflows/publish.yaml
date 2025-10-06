@@ -28,5 +28,5 @@ jobs:
       - name: Build
         run: uv build
 
-      - name: Publish to PyPi
+      - name: Publish to PyPI
         run: uv publish
