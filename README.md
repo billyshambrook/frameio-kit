@@ -145,35 +145,69 @@ For custom actions that need to act on behalf of a user, frameio-kit provides fu
 
 ### Setting Up OAuth
 
-First, implement the `TokenStore` interface to persist user tokens in your database:
+frameio-kit provides built-in token storage implementations for common backends:
+
+#### Option 1: In-Memory Storage (Development/Testing)
 
 ```python
-from frameio_kit import App, TokenStore, ActionEvent, Form, LinkField
+from frameio_kit import App, InMemoryTokenStore
 
-class DatabaseTokenStore(TokenStore):
-    """Store tokens in your database."""
-    
-    async def save_token(self, user_id: str, token_data: dict):
-        # Save to your database
-        await db.users.update_one(
-            {"frameio_user_id": user_id},
-            {"$set": {"frameio_token": token_data}},
-            upsert=True
-        )
-    
-    async def get_token(self, user_id: str) -> dict | None:
-        # Retrieve from your database
-        user = await db.users.find_one({"frameio_user_id": user_id})
-        return user.get("frameio_token") if user else None
-
-# Initialize the app with OAuth credentials
 app = App(
-    token=os.getenv("FRAMEIO_APP_TOKEN"),  # Your app token
+    token=os.getenv("FRAMEIO_APP_TOKEN"),
     oauth_client_id=os.getenv("OAUTH_CLIENT_ID"),
     oauth_client_secret=os.getenv("OAUTH_CLIENT_SECRET"),
     oauth_redirect_uri="https://yourapp.com/oauth/callback",
-    token_store=DatabaseTokenStore()
+    token_store=InMemoryTokenStore()  # Tokens lost on restart!
 )
+```
+
+**Note**: InMemoryTokenStore is only suitable for development. All tokens are lost when the app restarts.
+
+#### Option 2: DynamoDB Storage (Production)
+
+```python
+from frameio_kit import App, DynamoDBTokenStore
+
+# Create DynamoDB token store
+token_store = DynamoDBTokenStore(
+    table_name="frameio-user-tokens",
+    region_name="us-east-1"
+)
+
+app = App(
+    token=os.getenv("FRAMEIO_APP_TOKEN"),
+    oauth_client_id=os.getenv("OAUTH_CLIENT_ID"),
+    oauth_client_secret=os.getenv("OAUTH_CLIENT_SECRET"),
+    oauth_redirect_uri="https://yourapp.com/oauth/callback",
+    token_store=token_store
+)
+```
+
+First, create the DynamoDB table:
+```bash
+aws dynamodb create-table \
+    --table-name frameio-user-tokens \
+    --attribute-definitions AttributeName=user_id,AttributeType=S \
+    --key-schema AttributeName=user_id,KeyType=HASH \
+    --billing-mode PAY_PER_REQUEST \
+    --region us-east-1
+```
+
+#### Option 3: Custom Storage
+
+Implement the `TokenStore` interface for your own database:
+
+```python
+from frameio_kit import TokenStore
+
+class CustomTokenStore(TokenStore):
+    async def save_token(self, user_id: str, token_data: dict):
+        # Save to your database
+        pass
+    
+    async def get_token(self, user_id: str) -> dict | None:
+        # Retrieve from your database
+        pass
 ```
 
 ### OAuth Flow in Custom Actions

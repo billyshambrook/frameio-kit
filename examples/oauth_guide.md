@@ -21,34 +21,58 @@ The OAuth flow in frameio-kit consists of several components:
 
 ## Implementation Steps
 
-### 1. Create a TokenStore Implementation
+### 1. Choose a TokenStore Implementation
 
-The `TokenStore` is an abstract base class that you must implement to store and retrieve user tokens. Here's an example using MongoDB:
+frameio-kit provides built-in token storage implementations. You can use these directly or implement your own:
+
+#### Option 1: In-Memory Storage (Development)
+
+```python
+from frameio_kit import App, InMemoryTokenStore
+
+app = App(
+    token=os.getenv("FRAMEIO_APP_TOKEN"),
+    oauth_client_id=os.getenv("OAUTH_CLIENT_ID"),
+    oauth_client_secret=os.getenv("OAUTH_CLIENT_SECRET"),
+    oauth_redirect_uri="https://yourapp.com/oauth/callback",
+    token_store=InMemoryTokenStore()
+)
+```
+
+**Warning**: Tokens are lost on restart. Only use for development.
+
+#### Option 2: DynamoDB Storage (Production)
+
+```python
+from frameio_kit import App, DynamoDBTokenStore
+
+token_store = DynamoDBTokenStore(
+    table_name="frameio-user-tokens",
+    region_name="us-east-1"
+)
+
+app = App(
+    token=os.getenv("FRAMEIO_APP_TOKEN"),
+    oauth_client_id=os.getenv("OAUTH_CLIENT_ID"),
+    oauth_client_secret=os.getenv("OAUTH_CLIENT_SECRET"),
+    oauth_redirect_uri="https://yourapp.com/oauth/callback",
+    token_store=token_store
+)
+```
+
+#### Option 3: Custom Storage
 
 ```python
 from frameio_kit import TokenStore
-from motor.motor_asyncio import AsyncIOMotorClient
 
-class MongoTokenStore(TokenStore):
-    def __init__(self, mongodb_uri: str):
-        self.client = AsyncIOMotorClient(mongodb_uri)
-        self.db = self.client.frameio_app
-        self.tokens = self.db.user_tokens
-    
-    async def save_token(self, user_id: str, token_data: dict) -> None:
-        await self.tokens.update_one(
-            {"user_id": user_id},
-            {"$set": {
-                "user_id": user_id,
-                "token_data": token_data,
-                "updated_at": datetime.utcnow()
-            }},
-            upsert=True
-        )
+class CustomTokenStore(TokenStore):
+    async def save_token(self, user_id: str, token_data: dict):
+        # Implement your storage logic
+        pass
     
     async def get_token(self, user_id: str) -> dict | None:
-        result = await self.tokens.find_one({"user_id": user_id})
-        return result["token_data"] if result else None
+        # Implement your retrieval logic
+        pass
 ```
 
 ### 2. Initialize App with OAuth Credentials
@@ -74,7 +98,7 @@ app = App(
 Your action handler should check for user authorization and handle both scenarios:
 
 ```python
-from frameio_kit import ActionEvent, Form, LinkField, Message
+from frameio_kit import ActionEvent, Message
 
 @app.on_action(
     event_type="my_action",
@@ -87,16 +111,14 @@ async def my_action(event: ActionEvent):
     user_token = await app.oauth.get_user_token(event.user.id)
     
     if not user_token:
-        # Show authorization form
+        # Show authorization message with URL
         auth_url = app.oauth.get_authorization_url(
             state=f"{event.user.id}:{event.interaction_id}"
         )
-        return Form(
+        return Message(
             title="Authorization Required",
-            description="Please authorize to continue",
-            fields=[
-                LinkField(label="Authorize", name="auth", value=auth_url)
-            ]
+            description=f"Please visit this URL to authorize: {auth_url}\n\n"
+                       f"After authorizing, trigger this action again."
         )
     
     # User is authorized - proceed with action
@@ -124,9 +146,9 @@ Here's what happens during the OAuth flow:
 1. User triggers custom action
    └─> Your handler checks for token
        └─> No token found
-           └─> Return Form with authorization link
+           └─> Return Message with authorization URL
 
-2. User clicks authorization link
+2. User visits authorization URL
    └─> Redirected to Frame.io OAuth page
        └─> User approves authorization
            └─> Frame.io redirects to your callback URL

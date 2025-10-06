@@ -8,47 +8,27 @@ Setup:
    - FRAMEIO_APP_TOKEN: Your app token for basic API calls
    - OAUTH_CLIENT_ID: Your OAuth client ID from Frame.io Developer Console
    - OAUTH_CLIENT_SECRET: Your OAuth client secret
+   - OAUTH_REDIRECT_URI: Your OAuth callback URL (e.g., https://yourapp.com/oauth/callback)
    - ACTION_SECRET: Your custom action secret
    
-2. Implement your own TokenStore (this example uses a simple in-memory store,
-   but you should use a database in production)
-
-3. Configure your Frame.io custom action to point to your server
+2. Configure your Frame.io custom action to point to your server
 
 How it works:
-- When a user triggers the action for the first time, they'll be prompted to authorize
+- When a user triggers the action for the first time, they'll be shown an authorization URL
 - After authorization, the token is stored and subsequent actions will work automatically
 - The app can then make API calls on behalf of the user
+
+Note: This example uses InMemoryTokenStore for simplicity. For production, use
+DynamoDBTokenStore or implement your own persistent storage.
 """
 
 import os
-from typing import Any
 
 import uvicorn
-from frameio_kit import ActionEvent, App, Form, LinkField, Message, TokenStore
-
-
-class InMemoryTokenStore(TokenStore):
-    """Simple in-memory token store for demonstration.
-    
-    WARNING: In production, use a proper database like PostgreSQL, MongoDB, etc.
-    This implementation will lose all tokens when the server restarts.
-    """
-
-    def __init__(self):
-        self.tokens: dict[str, dict[str, Any]] = {}
-
-    async def save_token(self, user_id: str, token_data: dict[str, Any]) -> None:
-        """Save token data for a user."""
-        self.tokens[user_id] = token_data
-        print(f"✅ Stored token for user {user_id}")
-
-    async def get_token(self, user_id: str) -> dict[str, Any] | None:
-        """Retrieve token data for a user."""
-        return self.tokens.get(user_id)
-
+from frameio_kit import ActionEvent, App, InMemoryTokenStore, Message
 
 # Initialize the app with OAuth configuration
+# For production, replace InMemoryTokenStore with DynamoDBTokenStore or your own implementation
 app = App(
     token=os.getenv("FRAMEIO_APP_TOKEN"),
     oauth_client_id=os.getenv("OAUTH_CLIENT_ID"),
@@ -86,11 +66,11 @@ async def export_to_service(event: ActionEvent):
             state=f"{event.user.id}:{event.interaction_id}"
         )
 
-        return Form(
+        return Message(
             title="Authorization Required",
-            description="To export assets, we need your permission to access your Frame.io account. "
-            "Click the link below to authorize.",
-            fields=[LinkField(label="Authorize Access", name="auth_url", value=auth_url)],
+            description=f"To export assets, we need your permission to access your Frame.io account.\n\n"
+            f"Please visit this URL to authorize: {auth_url}\n\n"
+            f"After authorizing, trigger this action again to complete the export.",
         )
 
     # User is authorized - perform the action with their token
