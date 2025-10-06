@@ -1,0 +1,54 @@
+[project]
+name = "framekit"
+version = "0.1.0"
+description = "A Python framework for building Frame.io apps"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "frameio>=0.0.23",
+    "frameio-experimental>=0.0.3",
+    "httpx>=0.28.1",
+    "pydantic>=2.11.10",
+    "starlette>=0.48.0",
+]
+license = { text = "MIT" }
+classifiers = [
+	"Programming Language :: Python :: 3.13",
+	"Programming Language :: Python :: Implementation :: CPython",
+	"License :: OSI Approved :: MIT License",
+	"Operating System :: OS Independent",
+]
+
+[build-system]
+requires = ["uv_build>=0.8.22,<0.9.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.3.0",
+    "pyrefly>=0.35.0",
+    "pytest>=8.4.2",
+    "pytest-asyncio>=1.2.0",
+    "pytest-xdist>=3.8.0",
+    "ruff>=0.6.4",
+]
+
+[project.urls]
+Repository = "https://github.com/billyshambrook/framekit"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+
+[tool.pyrefly]
+project-includes = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.pyright]
+[[tool.pyright.fileConfig]]
+uri = "**/tests/**"
+reportUnknownParameterType = "none"
