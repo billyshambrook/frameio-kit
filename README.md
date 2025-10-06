@@ -50,8 +50,7 @@ Webhooks are automated, non-interactive messages from Frame.io. Use the @app.on_
 
 Example:
 ```python
-from frameio_kit import App, WebhookEvent
-from frameio_kit.ui import Message
+from frameio_kit import App, Message, WebhookEvent
 
 app = App()
 
@@ -73,7 +72,7 @@ The key feature is returning a Form to ask the user for input. When the user sub
 First, define a handler that returns a Form when the user clicks the action.
 
 ```python
-from frameio_kit.ui import Form, SelectField, SelectOption
+from frameio_kit import Form, SelectField, SelectOption
 
 LANGUAGES = [SelectOption(name=lang, value=val) for lang, val in [("English", "en"), ("Spanish", "es")]]
 
