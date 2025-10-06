@@ -194,20 +194,13 @@ async def export_asset(event: ActionEvent):
     user_token = await app.oauth.get_user_token(event.user.id)
     
     if not user_token:
-        # User needs to authorize - show them a link
+        # User needs to authorize - provide them with the authorization URL
         auth_url = app.oauth.get_authorization_url(
             state=f"{event.user.id}:{event.interaction_id}"
         )
-        return Form(
+        return Message(
             title="Authorization Required",
-            description="Please authorize this app to access your Frame.io account.",
-            fields=[
-                LinkField(
-                    label="Click here to authorize",
-                    name="auth_url",
-                    value=auth_url
-                )
-            ]
+            description=f"This action requires your authorization. Please visit the following URL to authorize: {auth_url}\n\nAfter authorizing, trigger this action again."
         )
     
     # User is authorized - perform the action on their behalf
@@ -230,13 +223,13 @@ async def export_asset(event: ActionEvent):
 
 ### How It Works
 
-1. **Initial Request**: When a user triggers the action without authorization, your handler checks for a token and returns a Form with an authorization link.
+1. **Initial Request**: When a user triggers the action without authorization, your handler checks for a token and returns a Message with an authorization URL.
 
-2. **User Authorization**: The user clicks the link, authorizes your app on Frame.io, and is redirected back to your app's OAuth callback endpoint (`/oauth/callback`).
+2. **User Authorization**: The user visits the authorization URL, approves your app on Frame.io, and is redirected back to your app's OAuth callback endpoint (`/oauth/callback`).
 
 3. **Token Storage**: The callback handler automatically exchanges the authorization code for tokens and stores them using your `TokenStore`.
 
-4. **Subsequent Requests**: Next time the user triggers the action, your app retrieves their token and creates a user-specific client to perform actions on their behalf.
+4. **Subsequent Requests**: The user triggers the action again. This time, your app retrieves their token and creates a user-specific client to perform actions on their behalf.
 
 5. **Token Refresh**: The OAuth manager handles token refresh automatically when tokens expire (developers should implement expiration checking in their `TokenStore`).
 
