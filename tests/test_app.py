@@ -5,8 +5,44 @@ import httpx
 import pytest
 
 from frameio_kit.app import App
-from frameio_kit.events import ActionEvent, WebhookEvent
+from frameio_kit.events import ActionEvent, AnyEvent, WebhookEvent
+from frameio_kit.middleware import AnyResponse, Middleware, NextFunc
 from frameio_kit.ui import Message
+
+# --- Middleware Test Classes ---
+
+
+class CallMiddleware(Middleware):
+    def __init__(self, call_log: list):
+        self.call_log = call_log
+
+    async def __call__(self, event: AnyEvent, next: NextFunc) -> AnyResponse:
+        self.call_log.append(f"call_before_{event.type}")
+        response = await next(event)
+        self.call_log.append(f"call_after_{event.type}")
+        return response
+
+
+class WebhookMiddleware(Middleware):
+    def __init__(self, call_log: list):
+        self.call_log = call_log
+
+    async def on_webhook(self, event: WebhookEvent, next: NextFunc) -> AnyResponse:
+        self.call_log.append(f"webhook_before_{event.type}")
+        response = await next(event)
+        self.call_log.append(f"webhook_after_{event.type}")
+        return response
+
+
+class ActionMiddleware(Middleware):
+    def __init__(self, call_log: list):
+        self.call_log = call_log
+
+    async def on_action(self, event: ActionEvent, next: NextFunc) -> AnyResponse:
+        self.call_log.append(f"action_before_{event.type}")
+        response = await next(event)
+        self.call_log.append(f"action_after_{event.type}")
+        return response
 
 
 @pytest.fixture
@@ -188,3 +224,85 @@ async def test_handle_request_returns_500_on_handler_exception(webhook_payload, 
         response = await client.post("/", content=body, headers=headers)
         assert response.status_code == 500
         assert "Internal Server Error" in response.text
+
+
+async def test_call_middleware_triggers_on_all_events(
+    webhook_payload, action_payload, sample_secret, create_valid_signature
+):
+    call_log = []
+    app = App(middleware=[CallMiddleware(call_log)])
+
+    @app.on_webhook("file.ready", secret=sample_secret)
+    async def webhook_handler(event: WebhookEvent):
+        call_log.append("webhook_handler")
+
+    @app.on_action("transcribe.file", name="...", description="...", secret=sample_secret)
+    async def action_handler(event: ActionEvent):
+        call_log.append("action_handler")
+
+    # Test webhook
+    body = json.dumps(webhook_payload).encode()
+    ts = int(time.time())
+    headers = {
+        "X-Frameio-Request-Timestamp": str(ts),
+        "X-Frameio-Signature": create_valid_signature(ts, body, sample_secret),
+    }
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        await client.post("/", content=body, headers=headers)
+
+    assert call_log == ["call_before_file.ready", "webhook_handler", "call_after_file.ready"]
+
+    # Test action
+    call_log.clear()
+    body = json.dumps(action_payload).encode()
+    ts = int(time.time())
+    headers = {
+        "X-Frameio-Request-Timestamp": str(ts),
+        "X-Frameio-Signature": create_valid_signature(ts, body, sample_secret),
+    }
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        await client.post("/", content=body, headers=headers)
+
+    assert call_log == ["call_before_transcribe.file", "action_handler", "call_after_transcribe.file"]
+
+
+async def test_specific_middleware_triggers_on_correct_events(
+    webhook_payload, action_payload, sample_secret, create_valid_signature
+):
+    call_log = []
+    app = App(middleware=[WebhookMiddleware(call_log), ActionMiddleware(call_log)])
+
+    @app.on_webhook("file.ready", secret=sample_secret)
+    async def webhook_handler(event: WebhookEvent):
+        call_log.append("webhook_handler")
+
+    @app.on_action("transcribe.file", name="...", description="...", secret=sample_secret)
+    async def action_handler(event: ActionEvent):
+        call_log.append("action_handler")
+
+    # Test webhook
+    body = json.dumps(webhook_payload).encode()
+    ts = int(time.time())
+    headers = {
+        "X-Frameio-Request-Timestamp": str(ts),
+        "X-Frameio-Signature": create_valid_signature(ts, body, sample_secret),
+    }
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        await client.post("/", content=body, headers=headers)
+
+    # ActionMiddleware should not be called
+    assert call_log == ["webhook_before_file.ready", "webhook_handler", "webhook_after_file.ready"]
+
+    # Test action
+    call_log.clear()
+    body = json.dumps(action_payload).encode()
+    ts = int(time.time())
+    headers = {
+        "X-Frameio-Request-Timestamp": str(ts),
+        "X-Frameio-Signature": create_valid_signature(ts, body, sample_secret),
+    }
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        await client.post("/", content=body, headers=headers)
+
+    # WebhookMiddleware should not be called
+    assert call_log == ["action_before_transcribe.file", "action_handler", "action_after_transcribe.file"]

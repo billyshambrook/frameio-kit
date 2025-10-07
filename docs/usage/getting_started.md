@@ -243,6 +243,7 @@ Now that you have a working integration, explore these guides:
 - **[Webhooks](webhooks.md)** - Learn about different event types and patterns
 - **[Custom Actions](custom_actions.md)** - Build interactive forms and workflows  
 - **[Client API](client_api.md)** - Make calls back to Frame.io's API
+- **[Middleware](middleware.md)** - Add cross-cutting concerns to your integration
 
 ## Common Issues
 

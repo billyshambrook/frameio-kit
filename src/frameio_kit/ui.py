@@ -209,3 +209,7 @@ class Form(_UIResponse):
     """
 
     fields: list[FormField] = Field(..., min_length=1)
+
+
+AnyResponse = Message | Form | None
+"""Union type representing any response that can be returned from handlers."""

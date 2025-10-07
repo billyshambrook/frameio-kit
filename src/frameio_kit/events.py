@@ -175,3 +175,7 @@ class ActionEvent(_BaseEvent):
     action_id: str
     interaction_id: str
     data: dict[str, Any] | None = None
+
+
+AnyEvent = ActionEvent | WebhookEvent
+"""Union type representing any event that can be processed by the app."""
