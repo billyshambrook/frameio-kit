@@ -30,6 +30,7 @@ Example:
     ```
 """
 
+import functools
 import json
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -43,11 +44,10 @@ from starlette.routing import Route
 from starlette.types import Receive, Scope, Send
 
 from .client import Client
-from .events import ActionEvent, WebhookEvent
+from .events import ActionEvent, AnyEvent, WebhookEvent
+from .middleware import Middleware
 from .security import verify_signature
-from .ui import Form, Message
-
-# --- Handler Type Definitions ---
+from .ui import AnyResponse, Form, Message
 
 # A handler for a standard webhook, which is non-interactive.
 # It can only return a Message or nothing.
@@ -55,7 +55,7 @@ WebhookHandlerFunc = Callable[[WebhookEvent], Awaitable[None]]
 
 # A handler for a custom action, which is interactive.
 # It can return a Message, a Form for further input, or nothing.
-ActionHandlerFunc = Callable[[ActionEvent], Awaitable[Message | Form | None]]
+ActionHandlerFunc = Callable[[ActionEvent], Awaitable[AnyResponse]]
 
 
 @dataclass
@@ -66,7 +66,7 @@ class _HandlerRegistration:
     secret: str
     name: str | None = None
     description: str | None = None
-    model: type[WebhookEvent | ActionEvent] = field(default=WebhookEvent)
+    model: type[AnyEvent] = field(default=WebhookEvent)
 
 
 class App:
@@ -82,7 +82,7 @@ class App:
             Frame.io API, available if an `token` was provided.
     """
 
-    def __init__(self, token: str | None = None) -> None:
+    def __init__(self, *, token: str | None = None, middleware: list[Middleware] = []) -> None:
         """Initializes the FrameApp.
 
         Args:
@@ -91,8 +91,11 @@ class App:
                 API calls made via the `app.client` property. It is highly
                 recommended to load this from a secure source, such as an
                 environment variable.
+            middleware: An optional list of middleware classes to process
+                requests before they reach the handler.
         """
         self._token = token
+        self._middleware = middleware or []
         self._api_client: Client | None = None
         self._webhook_handlers: dict[str, _HandlerRegistration] = {}
         self._action_handlers: dict[str, _HandlerRegistration] = {}
@@ -225,6 +228,14 @@ class App:
         """Finds the registered handler for a given event type."""
         return self._webhook_handlers.get(event_type) or self._action_handlers.get(event_type)
 
+    def _build_middleware_chain(
+        self, handler: Callable[[AnyEvent], Awaitable[AnyResponse]]
+    ) -> Callable[[AnyEvent], Awaitable[AnyResponse]]:
+        wrapped = handler
+        for mw in reversed(self._middleware):
+            wrapped = functools.partial(mw.__call__, next=wrapped)
+        return wrapped
+
     async def _handle_request(self, request: Request) -> Response:
         """The main ASGI request handler, refactored for clarity."""
         body = await request.body()
@@ -247,12 +258,9 @@ class App:
         try:
             event = handler_reg.model.model_validate(payload)
 
-            if handler_reg.model is WebhookEvent:
-                webhook_handler = cast(WebhookHandlerFunc, handler_reg.func)
-                response_data = await webhook_handler(cast(WebhookEvent, event))
-            else:
-                action_handler = cast(ActionHandlerFunc, handler_reg.func)
-                response_data = await action_handler(cast(ActionEvent, event))
+            final_handler = cast(Callable[[AnyEvent], Awaitable[AnyResponse]], handler_reg.func)
+            handler_with_middleware = self._build_middleware_chain(final_handler)
+            response_data = await handler_with_middleware(event)
 
             if isinstance(response_data, Message) or isinstance(response_data, Form):
                 return JSONResponse(response_data.model_dump(exclude_none=True))

@@ -51,6 +51,7 @@ async def analyze_file(event: ActionEvent):
 - **[Webhooks](usage/webhooks.md)** - React to Frame.io events automatically
 - **[Custom Actions](usage/custom_actions.md)** - Build interactive user experiences
 - **[Client API](usage/client_api.md)** - Make calls back to Frame.io's API
+- **[Middleware](usage/middleware.md)** - Add cross-cutting concerns to your integration
 
 ### **Advanced Features**
 - **[API Reference](api_reference.md)** - Complete documentation for all classes and methods

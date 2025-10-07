@@ -29,6 +29,7 @@ Ready to build your first Frame.io integration? Check out our comprehensive docu
 - **[🎣 Webhooks](https://billyshambrook.github.io/frameio-kit/usage/webhooks/)** - React to Frame.io events automatically  
 - **[🎬 Custom Actions](https://billyshambrook.github.io/frameio-kit/usage/custom_actions/)** - Build interactive user experiences
 - **[🌐 Client API](https://billyshambrook.github.io/frameio-kit/usage/client_api/)** - Make calls back to Frame.io's API
+- **[🔄 Middleware](https://billyshambrook.github.io/frameio-kit/usage/middleware/)** - Add cross-cutting concerns to your integration
 
 ## ✨ Why frameio-kit?
 
@@ -59,12 +60,12 @@ Complete documentation is available at [billyshambrook.github.io/frameio-kit](ht
 
 Contributions are the heart of open source! We welcome improvements, bug fixes, and new features. Whether you're fixing a typo or adding a major feature, every contribution makes frameio-kit better.
 
-### Prerequisites
+### 📋 Prerequisites
 
 - Python 3.13+
 - [uv](https://docs.astral.sh/uv/) package manager
 
-### Quick Start
+### 🚀 Quick Start
 
 1. **Fork and clone** the repository:
    ```bash
@@ -83,7 +84,7 @@ Contributions are the heart of open source! We welcome improvements, bug fixes, 
    uv run pre-commit install
    ```
 
-### Development Workflow
+### 🧪 Development Workflow
 
 **Run tests:**
 ```bash
@@ -100,7 +101,7 @@ uv run pre-commit run --all-files
 uv run mkdocs serve
 ```
 
-### Pull Request Process
+### 🔄 Pull Request Process
 
 1. **Fork** the repository on GitHub
 2. **Create** a feature branch from `main`
@@ -109,7 +110,7 @@ uv run mkdocs serve
 5. **Commit** your changes with a clear message
 6. **Push** to your fork and open a pull request
 
-### Getting Help
+### 💡 Getting Help
 
 - **Questions?** Open a [discussion](https://github.com/billyshambrook/frameio-kit/discussions)
 - **Bug reports?** Open an [issue](https://github.com/billyshambrook/frameio-kit/issues)
