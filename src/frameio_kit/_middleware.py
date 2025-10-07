@@ -12,7 +12,7 @@ to your handler, and finally back through the middleware in reverse order.
 from typing import Awaitable, Callable
 
 from ._events import ActionEvent, AnyEvent, WebhookEvent
-from ._ui import AnyResponse
+from ._responses import AnyResponse
 
 NextFunc = Callable[[AnyEvent], Awaitable[AnyResponse]]
 """Type alias for the next function in the middleware chain."""
