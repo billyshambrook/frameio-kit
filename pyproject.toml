@@ -78,8 +78,3 @@ project-includes = ["src"]
 [tool.ruff]
 line-length = 120
 target-version = "py313"
-
-[tool.pyright]
-[[tool.pyright.fileConfig]]
-uri = "**/tests/**"
-reportUnknownParameterType = "none"

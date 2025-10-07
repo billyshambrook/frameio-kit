@@ -99,6 +99,36 @@ class _BaseEvent(BaseModel):
         """
         return self.resource.id
 
+    @computed_field
+    @property
+    def user_id(self) -> str:
+        """A convenience property to directly access the user's ID.
+
+        Returns:
+            The unique identifier (UUID) of the user.
+        """
+        return self.user.id
+
+    @computed_field
+    @property
+    def project_id(self) -> str:
+        """A convenience property to directly access the project's ID.
+
+        Returns:
+            The unique identifier (UUID) of the project.
+        """
+        return self.project.id
+
+    @computed_field
+    @property
+    def workspace_id(self) -> str:
+        """A convenience property to directly access the workspace's ID.
+
+        Returns:
+            The unique identifier (UUID) of the workspace.
+        """
+        return self.workspace.id
+
 
 class WebhookEvent(_BaseEvent):
     """A standard webhook event payload from Frame.io.

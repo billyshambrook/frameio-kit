@@ -11,4 +11,4 @@ static-checks: build
     uv run pre-commit run --all-files
 
 docs:
-    uv run mkdocs serve
+    uv run mkdocs serve --livereload
