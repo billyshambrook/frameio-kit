@@ -1,7 +1,7 @@
 from .app import ActionHandlerFunc, App, WebhookHandlerFunc
 from .client import Client
 from .events import Account, ActionEvent, Project, Resource, User, WebhookEvent, Workspace
-from .ui import BooleanField, Form, FormField, LinkField, Message, SelectField, SelectOption, TextareaField, TextField
+from .ui import CheckboxField, Form, FormField, LinkField, Message, SelectField, SelectOption, TextareaField, TextField
 
 __all__ = [
     # app.py
@@ -19,7 +19,7 @@ __all__ = [
     "WebhookEvent",
     "Workspace",
     # ui.py
-    "BooleanField",
+    "CheckboxField",
     "Form",
     "FormField",
     "LinkField",

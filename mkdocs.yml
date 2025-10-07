@@ -2,7 +2,7 @@ site_name: frameio-kit
 site_url: "https://billyshambrook.github.io/frameio-kit/"
 repo_name: billyshambrook/frameio-kit
 repo_url: https://github.com/billyshambrook/frameio-kit
-watch: [mkdocs.yml, docs]
+watch: [mkdocs.yml, docs, src]
 copyright: Copyright &copy; 2025 Billy Shambrook
 edit_uri: edit/main/docs/
 
@@ -51,11 +51,13 @@ nav:
 
 plugins:
   - search
+  - autorefs
   - mkdocstrings:
       handlers:
         python:
           paths: [src]
           options:
+            members_order: source
             backlinks: tree
             docstring_options:
               ignore_init_summary: true

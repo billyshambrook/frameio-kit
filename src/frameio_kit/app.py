@@ -24,7 +24,6 @@ Example:
     @app.on_webhook("file.ready", secret=os.getenv("WEBHOOK_SECRET"))
     async def on_file_ready(event: WebhookEvent):
         print(f"File '{event.resource_id}' is now ready!")
-        return Message(title="Processing Started", description="File received.")
 
     if __name__ == "__main__":
         uvicorn.run(app, host="0.0.0.0", port=8000)
@@ -52,7 +51,7 @@ from .ui import Form, Message
 
 # A handler for a standard webhook, which is non-interactive.
 # It can only return a Message or nothing.
-WebhookHandlerFunc = Callable[[WebhookEvent], Awaitable[Message | None]]
+WebhookHandlerFunc = Callable[[WebhookEvent], Awaitable[None]]
 
 # A handler for a custom action, which is interactive.
 # It can return a Message, a Form for further input, or nothing.
@@ -113,8 +112,8 @@ class App:
             @app.on_webhook("file.ready", secret="...")
             async def on_file_ready(event: WebhookEvent):
                 # Use the client to fetch more details about the file
-                file_details = await app.client.files.get(event.resource_id)
-                print(file_details.name)
+                file_details = await app.client.files.show(account_id=event.account_id, file_id=event.resource_id)
+                print(file_details.data.name)
             ```
 
         Returns:
@@ -136,6 +135,18 @@ class App:
         Frame.io sends a webhook event of the specified type(s). A webhook
         handler can only receive `WebhookEvent` and can only return a `Message`
         or `None`.
+
+        Example:
+            ```python
+            from frameio_kit import App, WebhookEvent
+
+            app = App()
+
+            @app.on_webhook(event_type="file.ready", secret="your-secret")
+            async def on_file_ready(event: WebhookEvent):
+                # Handle the event
+                pass
+            ```
 
         Args:
             event_type: The Frame.io event type to listen for (e.g.,
@@ -160,6 +171,18 @@ class App:
         This decorator connects an asynchronous function to a Custom Action in the
         Frame.io UI. The handler receives an `ActionEvent` and can return a
         `Message`, a `Form` for more input, or `None`.
+
+        Example:
+            ```python
+            from frameio_kit import App, ActionEvent
+
+            app = App()
+
+            @app.on_action(event_type="my_app.transcribe", name="Transcribe", description="Transcribe file", secret="your-secret")
+            async def on_transcribe(event: ActionEvent):
+                # Handle the event
+                pass
+            ```
 
         Args:
             event_type: A unique string you define to identify this action
