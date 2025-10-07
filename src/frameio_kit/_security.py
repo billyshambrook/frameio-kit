@@ -5,7 +5,7 @@ import time
 from starlette.datastructures import Headers
 
 # Per Frame.io documentation, we should reject timestamps older than 5 minutes.
-TIMESTAMP_TOLERANCE_SECONDS = 300
+_TIMESTAMP_TOLERANCE_SECONDS = 300
 
 
 async def verify_signature(headers: Headers, body: bytes, secret: str) -> bool:
@@ -46,7 +46,7 @@ async def verify_signature(headers: Headers, body: bytes, secret: str) -> bool:
 
     # 1. Verify timestamp to prevent replay attacks
     current_time = time.time()
-    if (current_time - int(req_timestamp_str)) > TIMESTAMP_TOLERANCE_SECONDS:
+    if (current_time - int(req_timestamp_str)) > _TIMESTAMP_TOLERANCE_SECONDS:
         return False
 
     # 2. Compute the expected signature
