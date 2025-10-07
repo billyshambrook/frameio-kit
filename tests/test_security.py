@@ -3,7 +3,7 @@ import time
 import pytest
 from starlette.datastructures import Headers
 
-from frameio_kit.security import TIMESTAMP_TOLERANCE_SECONDS, verify_signature
+from frameio_kit import _TIMESTAMP_TOLERANCE_SECONDS, verify_signature  # type: ignore
 
 
 @pytest.fixture
@@ -59,7 +59,7 @@ async def test_verify_signature_fails_with_expired_timestamp(sample_body, sample
     """
     Tests that verification fails if the timestamp is too old (replay attack).
     """
-    expired_time = int(time.time()) - (TIMESTAMP_TOLERANCE_SECONDS + 1)
+    expired_time = int(time.time()) - (_TIMESTAMP_TOLERANCE_SECONDS + 1)
     signature = create_valid_signature(expired_time, sample_body, sample_secret)
 
     headers = Headers({"X-Frameio-Request-Timestamp": str(expired_time), "X-Frameio-Signature": signature})

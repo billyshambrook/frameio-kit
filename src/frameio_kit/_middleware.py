@@ -11,8 +11,8 @@ to your handler, and finally back through the middleware in reverse order.
 
 from typing import Awaitable, Callable
 
-from .events import ActionEvent, AnyEvent, WebhookEvent
-from .ui import AnyResponse
+from ._events import ActionEvent, AnyEvent, WebhookEvent
+from ._ui import AnyResponse
 
 NextFunc = Callable[[AnyEvent], Awaitable[AnyResponse]]
 """Type alias for the next function in the middleware chain."""

@@ -1,8 +1,9 @@
-from .app import ActionHandlerFunc, App, WebhookHandlerFunc
-from .client import Client
-from .events import Account, ActionEvent, AnyEvent, Project, Resource, User, WebhookEvent, Workspace
-from .middleware import Middleware, NextFunc
-from .ui import (
+from ._app import ActionHandlerFunc, App, WebhookHandlerFunc
+from ._client import Client
+from ._events import Account, ActionEvent, AnyEvent, Project, Resource, User, WebhookEvent, Workspace
+from ._middleware import Middleware, NextFunc
+from ._security import verify_signature
+from ._ui import (
     AnyResponse,
     CheckboxField,
     Form,
@@ -16,13 +17,13 @@ from .ui import (
 )
 
 __all__ = [
-    # app.py
+    # _app.py
     "ActionHandlerFunc",
     "App",
     "WebhookHandlerFunc",
-    # client.py
+    # _client.py
     "Client",
-    # events.py
+    # _events.py
     "Account",
     "ActionEvent",
     "Project",
@@ -31,10 +32,10 @@ __all__ = [
     "WebhookEvent",
     "Workspace",
     "AnyEvent",
-    # middleware.py
+    # _middleware.py
     "Middleware",
     "NextFunc",
-    # ui.py
+    # _ui.py
     "AnyResponse",
     "CheckboxField",
     "Form",
@@ -45,4 +46,6 @@ __all__ = [
     "SelectOption",
     "TextareaField",
     "TextField",
+    # _security.py
+    "verify_signature",
 ]
