@@ -176,6 +176,19 @@ class ActionEvent(_BaseEvent):
     interaction_id: str
     data: dict[str, Any] | None = None
 
+    @computed_field
+    @property
+    def account(self) -> Account:
+        """A convenience property to access the account as an Account object.
+
+        This provides consistency with WebhookEvent, allowing access to the
+        account ID via `event.account.id` for both event types.
+
+        Returns:
+            An Account object containing the account ID.
+        """
+        return Account(id=self.account_id)
+
 
 AnyEvent = ActionEvent | WebhookEvent
 """Union type representing any event that can be processed by the app."""
