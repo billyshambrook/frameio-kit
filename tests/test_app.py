@@ -179,6 +179,8 @@ async def test_handle_request_executes_handler_for_valid_request(
     assert isinstance(event_arg, WebhookEvent)
     assert event_arg.resource.id == "file_123"
     assert event_arg.type == "file.ready"
+    # Assert that the timestamp was correctly extracted from headers
+    assert event_arg.timestamp == ts
 
 
 async def test_handle_request_serializes_ui_response(action_payload, sample_secret, create_valid_signature):
@@ -303,3 +305,74 @@ async def test_specific_middleware_triggers_on_correct_events(
 
     # WebhookMiddleware should not be called
     assert call_log == ["action_before_transcribe.file", "action_handler", "action_after_transcribe.file"]
+
+
+async def test_timestamp_exposed_on_webhook_event(webhook_payload, sample_secret, create_valid_signature):
+    """Tests that the timestamp is correctly extracted from headers and exposed on WebhookEvent."""
+    call_log = []
+    app = App()
+
+    @app.on_webhook("file.ready", secret=sample_secret)
+    async def handler(event: WebhookEvent):
+        call_log.append(event)
+
+    body = json.dumps(webhook_payload).encode()
+    ts = int(time.time())
+    headers = {
+        "X-Frameio-Request-Timestamp": str(ts),
+        "X-Frameio-Signature": create_valid_signature(ts, body, sample_secret),
+    }
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/", content=body, headers=headers)
+        assert response.status_code == 200
+
+    assert len(call_log) == 1
+    event = call_log[0]
+    assert event.timestamp == ts
+
+
+async def test_timestamp_exposed_on_action_event(action_payload, sample_secret, create_valid_signature):
+    """Tests that the timestamp is correctly extracted from headers and exposed on ActionEvent."""
+    call_log = []
+    app = App()
+
+    @app.on_action("transcribe.file", name="Transcribe", description="...", secret=sample_secret)
+    async def handler(event: ActionEvent):
+        call_log.append(event)
+
+    body = json.dumps(action_payload).encode()
+    ts = int(time.time())
+    headers = {
+        "X-Frameio-Request-Timestamp": str(ts),
+        "X-Frameio-Signature": create_valid_signature(ts, body, sample_secret),
+    }
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/", content=body, headers=headers)
+        assert response.status_code == 200
+
+    assert len(call_log) == 1
+    event = call_log[0]
+    assert event.timestamp == ts
+
+
+async def test_missing_timestamp_header_returns_401(webhook_payload, sample_secret):
+    """Tests that a 401 is returned when the X-Frameio-Request-Timestamp header is missing."""
+    app = App()
+
+    @app.on_webhook("file.ready", secret=sample_secret)
+    async def handler(event: WebhookEvent):
+        pass
+
+    body = json.dumps(webhook_payload).encode()
+    # No timestamp header provided - signature verification will fail
+    headers = {
+        "X-Frameio-Signature": "v0=dummy_signature",
+    }
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/", content=body, headers=headers)
+        # verify_signature returns False when timestamp header is missing
+        assert response.status_code == 401
+        assert "Invalid signature" in response.text
