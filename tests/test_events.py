@@ -15,6 +15,7 @@ def webhook_event_data():
         "resource": {"id": "file_123", "type": "file"},
         "user": {"id": "user_123"},
         "workspace": {"id": "ws_123"},
+        "timestamp": 1234567890,
     }
 
 
@@ -31,6 +32,7 @@ def action_event_data():
         "user": {"id": "user_123"},
         "workspace": {"id": "ws_123"},
         "data": {"language": "en-US"},
+        "timestamp": 1234567890,
     }
 
 
