@@ -81,6 +81,9 @@ class _BaseEvent(BaseModel):
         type: The specific event type string (e.g., 'file.ready').
         user: The user who triggered the event.
         workspace: The workspace where the event occurred.
+        timestamp: The Unix timestamp (in seconds) when the event was generated
+            by Frame.io. This value is extracted from the X-Frameio-Request-Timestamp
+            header.
     """
 
     project: Project
@@ -88,6 +91,7 @@ class _BaseEvent(BaseModel):
     type: str
     user: User
     workspace: Workspace
+    timestamp: int
 
     @computed_field
     @property
