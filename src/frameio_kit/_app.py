@@ -255,6 +255,10 @@ class App:
         if not await verify_signature(request.headers, body, handler_reg.secret):
             return Response("Invalid signature.", status_code=401)
 
+        # Extract timestamp from headers and add to payload
+        # Note: verify_signature already validated that this header exists and is valid
+        payload["timestamp"] = int(request.headers["X-Frameio-Request-Timestamp"])
+
         try:
             event = handler_reg.model.model_validate(payload)
 
