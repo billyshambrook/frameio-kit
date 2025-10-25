@@ -317,7 +317,7 @@ async def test_timestamp_exposed_on_webhook_event(webhook_payload, sample_secret
         call_log.append(event)
 
     body = json.dumps(webhook_payload).encode()
-    ts = int(time.time())  # Use current timestamp
+    ts = int(time.time())
     headers = {
         "X-Frameio-Request-Timestamp": str(ts),
         "X-Frameio-Signature": create_valid_signature(ts, body, sample_secret),
@@ -342,7 +342,7 @@ async def test_timestamp_exposed_on_action_event(action_payload, sample_secret, 
         call_log.append(event)
 
     body = json.dumps(action_payload).encode()
-    ts = int(time.time())  # Use current timestamp
+    ts = int(time.time())
     headers = {
         "X-Frameio-Request-Timestamp": str(ts),
         "X-Frameio-Signature": create_valid_signature(ts, body, sample_secret),
