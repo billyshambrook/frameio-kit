@@ -161,6 +161,34 @@ class App:
             self._api_client = Client(token=self._token)
         return self._api_client
 
+    @property
+    def token_manager(self) -> TokenManager:
+        """Provides access to the OAuth token manager.
+
+        This manager handles encrypted token storage, retrieval, and automatic
+        refresh for user authentication. Only available when OAuth is configured.
+
+        Example:
+            ```python
+            # Delete a user's token (logout)
+            await app.token_manager.delete_token(user_id="user_123")
+
+            # Check if user has a token
+            token = await app.token_manager.get_token(user_id="user_123")
+            if token:
+                print("User is authenticated")
+            ```
+
+        Returns:
+            The TokenManager instance for managing user tokens.
+
+        Raises:
+            RuntimeError: If OAuth was not configured during App initialization.
+        """
+        if not self._token_manager:
+            raise RuntimeError("Cannot access token manager. OAuth not configured in App initialization.")
+        return self._token_manager
+
     def on_webhook(self, event_type: str | list[str], secret: str):
         """Decorator to register a function as a webhook event handler.
 

@@ -103,4 +103,33 @@ actions = await app.client.experimental.actions.actions_index(
 
 ## Authentication
 
+### Server-to-Server Authentication (Default)
+
 The client automatically handles authentication using your provided token. No additional setup is required - just make sure your token has the necessary permissions for the operations you want to perform.
+
+```python
+app = App(token=os.getenv("FRAMEIO_TOKEN"))
+
+# Use app.client for S2S authenticated calls
+file = await app.client.files.show(...)
+```
+
+### User Authentication
+
+For user-specific authentication, you can create a client with a user's OAuth token. This attributes API calls to the user in Frame.io activity logs.
+
+```python
+from frameio_kit import Client
+
+@app.on_action(..., require_user_auth=True)
+async def my_action(event: ActionEvent):
+    # Create client with user's token
+    user_client = Client(token=event.user_access_token)
+
+    # API calls are now attributed to the user
+    file = await user_client.files.show(...)
+
+    await user_client.close()
+```
+
+See the [User Authentication guide](user_auth.md) for details on enabling Adobe Login OAuth.

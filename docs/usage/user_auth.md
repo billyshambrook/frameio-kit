@@ -208,11 +208,8 @@ Tokens are automatically refreshed when they expire:
 To log out a user or revoke access:
 
 ```python
-# Inside your app initialization
-token_manager = app._token_manager
-
 # Delete user's token
-await token_manager.delete_token(user_id="user_123")
+await app.token_manager.delete_token(user_id="user_123")
 ```
 
 ## Security Considerations
