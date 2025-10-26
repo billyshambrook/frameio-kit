@@ -5,7 +5,6 @@ The tests use helper functions to wrap encrypted bytes in dict format as require
 by py-key-value-aio stores.
 """
 
-import asyncio
 import base64
 from datetime import datetime, timedelta
 from pathlib import Path
