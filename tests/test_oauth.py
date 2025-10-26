@@ -407,3 +407,85 @@ class TestOAuthConfig:
         )
 
         assert config.encryption_key == "test_key_12345"
+
+    def test_http_client_optional(self):
+        """Test that http_client is optional and defaults to None."""
+        config = OAuthConfig(
+            client_id="test_id",
+            client_secret="test_secret",
+            redirect_uri="https://example.com/callback",
+        )
+
+        assert config.http_client is None
+
+    def test_custom_http_client(self):
+        """Test that custom http_client can be provided."""
+        custom_client = httpx.AsyncClient(timeout=60.0)
+        config = OAuthConfig(
+            client_id="test_id",
+            client_secret="test_secret",
+            redirect_uri="https://example.com/callback",
+            http_client=custom_client,
+        )
+
+        assert config.http_client is custom_client
+
+
+class TestCustomHttpClient:
+    """Tests for custom httpx client support in AdobeOAuthClient."""
+
+    async def test_uses_provided_http_client(self):
+        """Test that OAuth client uses provided httpx client."""
+        custom_client = httpx.AsyncClient(timeout=60.0)
+
+        oauth_client = AdobeOAuthClient(
+            client_id="test_id",
+            client_secret="test_secret",
+            redirect_uri="https://example.com/callback",
+            http_client=custom_client,
+        )
+
+        # Verify it uses the custom client
+        assert oauth_client._http is custom_client
+        assert not oauth_client._owns_http_client
+
+        # Close should not close the custom client
+        await oauth_client.close()
+        # Custom client should still be usable
+        assert not custom_client.is_closed
+
+        # Clean up
+        await custom_client.aclose()
+
+    async def test_creates_own_client_when_not_provided(self):
+        """Test that OAuth client creates its own httpx client when not provided."""
+        oauth_client = AdobeOAuthClient(
+            client_id="test_id",
+            client_secret="test_secret",
+            redirect_uri="https://example.com/callback",
+        )
+
+        # Verify it created its own client
+        assert oauth_client._http is not None
+        assert oauth_client._owns_http_client
+
+        # Close should close the owned client
+        await oauth_client.close()
+        assert oauth_client._http.is_closed
+
+    async def test_custom_client_timeout_respected(self):
+        """Test that custom client's timeout configuration is preserved."""
+        custom_client = httpx.AsyncClient(timeout=120.0)
+
+        oauth_client = AdobeOAuthClient(
+            client_id="test_id",
+            client_secret="test_secret",
+            redirect_uri="https://example.com/callback",
+            http_client=custom_client,
+        )
+
+        # Verify timeout is preserved
+        assert oauth_client._http.timeout.read == 120.0
+
+        # Clean up
+        await custom_client.aclose()

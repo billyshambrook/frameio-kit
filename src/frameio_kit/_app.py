@@ -119,6 +119,7 @@ class App:
                 client_secret=self._oauth_config.client_secret,
                 redirect_uri=self._oauth_config.redirect_uri,
                 scopes=self._oauth_config.scopes,
+                http_client=self._oauth_config.http_client,
             )
             # Use provided storage or default to MemoryStore
             storage = self._oauth_config.storage

@@ -31,11 +31,18 @@ class OAuthConfig(BaseModel):
         token_refresh_buffer_seconds: Number of seconds before token expiration to
             trigger automatic refresh. Defaults to 300 seconds (5 minutes). This
             prevents token expiration during ongoing API calls.
+        http_client: Optional httpx.AsyncClient for OAuth HTTP requests. If not
+            provided, a new client will be created. Providing your own enables
+            connection pooling, custom timeouts, and shared configuration.
 
     Example:
         ```python
         from frameio_kit import App, OAuthConfig
         from key_value.aio.stores.memory import MemoryStore
+        import httpx
+
+        # With custom HTTP client for connection pooling
+        custom_client = httpx.AsyncClient(timeout=60.0, limits=httpx.Limits(max_connections=100))
 
         app = App(
             oauth=OAuthConfig(
@@ -44,6 +51,7 @@ class OAuthConfig(BaseModel):
                 redirect_uri="https://myapp.com/.auth/callback",
                 storage=MemoryStore(),
                 token_refresh_buffer_seconds=600,  # Refresh 10 minutes early
+                http_client=custom_client,  # Share connection pool
             )
         )
         ```
@@ -56,6 +64,7 @@ class OAuthConfig(BaseModel):
     storage: object = Field(default_factory=lambda: None)  # If None, will be initialized with MemoryStore in App.__init__
     encryption_key: Optional[str] = None
     token_refresh_buffer_seconds: int = 300  # 5 minutes default
+    http_client: object = Field(default=None)  # Optional httpx.AsyncClient
 
 
 class AdobeOAuthClient:
@@ -98,6 +107,7 @@ class AdobeOAuthClient:
         client_secret: str,
         redirect_uri: str,
         scopes: list[str] | None = None,
+        http_client: httpx.AsyncClient | None = None,
     ) -> None:
         """Initialize Adobe OAuth client.
 
@@ -106,6 +116,9 @@ class AdobeOAuthClient:
             client_secret: Adobe IMS application client secret.
             redirect_uri: OAuth callback URI (must match Adobe Console configuration).
             scopes: List of OAuth scopes. Defaults to Frame.io API access.
+            http_client: Optional httpx.AsyncClient for HTTP requests. If not provided,
+                a new client will be created with default settings (30s timeout).
+                Providing your own client allows connection pooling and custom configuration.
         """
         self.client_id = client_id
         self.client_secret = client_secret
@@ -116,7 +129,9 @@ class AdobeOAuthClient:
         self.authorization_url = "https://ims-na1.adobelogin.com/ims/authorize/v2"
         self.token_url = "https://ims-na1.adobelogin.com/ims/token/v3"
 
-        self._http = httpx.AsyncClient(timeout=30.0)
+        # Use provided client or create our own
+        self._http = http_client or httpx.AsyncClient(timeout=30.0)
+        self._owns_http_client = http_client is None  # Track if we should close it
 
     def get_authorization_url(self, state: str) -> str:
         """Generate OAuth authorization URL for user redirect.
@@ -224,14 +239,16 @@ class AdobeOAuthClient:
     async def close(self) -> None:
         """Close HTTP client and cleanup resources.
 
-        Should be called when the OAuth client is no longer needed.
+        Only closes the HTTP client if it was created internally. If a client was
+        provided by the user, it's their responsibility to close it.
 
         Example:
             ```python
             await oauth_client.close()
             ```
         """
-        await self._http.aclose()
+        if self._owns_http_client:
+            await self._http.aclose()
 
 
 class TokenRefreshError(Exception):
