@@ -1,76 +1,28 @@
 # Middleware
 
-Middleware provides a powerful way to add cross-cutting concerns to your Frame.io integration without cluttering your handler functions. You can use middleware for logging, authentication, metrics collection, error handling, and more.
+Middleware adds cross-cutting concerns like logging, metrics, and error handling to your Frame.io integration without cluttering handler functions.
 
-## Why Use Middleware?
+## When to Use Middleware
 
-Middleware is particularly useful when you need to:
+Use middleware when you need to:
 
-- **Add logging or monitoring** to all requests
-- **Implement authentication or authorization** checks
-- **Collect metrics** about request processing times
-- **Handle errors** consistently across all handlers
-- **Add request/response transformation** logic
-- **Implement rate limiting** or other security measures
+- Add logging or monitoring to all requests
+- Collect metrics about processing times
+- Handle errors consistently
+- Implement authentication checks
+- Add rate limiting or security measures
 
-Instead of duplicating this logic in every handler, middleware allows you to write it once and apply it globally.
+## How It Works
 
-## How Middleware Works
-
-Middleware in `frameio-kit` follows a chain-of-responsibility pattern. When an event is received, it flows through each middleware in the order they were registered, then to your handler, and finally back through the middleware in reverse order.
+Middleware follows a chain pattern. Events flow through each middleware in order, then to your handler, and back through middleware in reverse:
 
 ```
 Request → Middleware 1 → Middleware 2 → Handler → Middleware 2 → Middleware 1 → Response
 ```
 
-## Middleware Hooks
+## Setup
 
-The [`Middleware`](../api_reference.md#frameio_kit.Middleware) base class provides three hooks you can override:
-
-### [`__call__(event, next)`](../api_reference.md#frameio_kit.Middleware.__call__)
-
-The main entry point that runs for **every event** (both webhooks and actions). This is where you implement logic that should apply universally.
-
-```python
-async def __call__(self, event: AnyEvent, next: NextFunc) -> AnyResponse:
-    # Code here runs before every event
-    result = await next(event)  # Call the next middleware or handler
-    # Code here runs after every event
-    return result
-```
-
-### [`on_webhook(event, next)`](../api_reference.md#frameio_kit.Middleware.on_webhook)
-
-Runs only for **webhook events**. This is called automatically by the base [`__call__`](../api_reference.md#frameio_kit.Middleware.__call__) method when the event is a [`WebhookEvent`](../api_reference.md#frameio_kit.WebhookEvent).
-
-```python
-async def on_webhook(self, event: WebhookEvent, next: NextFunc) -> AnyResponse:
-    # Code here runs only for webhook events
-    result = await next(event)
-    return result
-```
-
-### [`on_action(event, next)`](../api_reference.md#frameio_kit.Middleware.on_action)
-
-Runs only for **custom action events**. This is called automatically by the base [`__call__`](../api_reference.md#frameio_kit.Middleware.__call__) method when the event is an [`ActionEvent`](../api_reference.md#frameio_kit.ActionEvent).
-
-```python
-async def on_action(self, event: ActionEvent, next: NextFunc) -> AnyResponse:
-    # Code here runs only for action events
-    result = await next(event)
-    return result
-```
-
-## Important: Overriding [`__call__`](../api_reference.md#frameio_kit.Middleware.__call__)
-
-When you override [`__call__`](../api_reference.md#frameio_kit.Middleware.__call__), you completely replace the base implementation. This means:
-
-- **Without `super()`**: The [`on_webhook`](../api_reference.md#frameio_kit.Middleware.on_webhook) and [`on_action`](../api_reference.md#frameio_kit.Middleware.on_action) methods on the same middleware class will **not** be called
-- **With `super()`**: The original dispatch logic is preserved, so [`on_webhook`](../api_reference.md#frameio_kit.Middleware.on_webhook) and [`on_action`](../api_reference.md#frameio_kit.Middleware.on_action) will still be called
-
-## Setting Up Middleware
-
-To use middleware, pass a list of middleware instances when creating your [`App`](../api_reference.md#frameio_kit.App):
+Pass middleware instances when creating your app:
 
 ```python
 from frameio_kit import App, Middleware
@@ -80,103 +32,91 @@ app = App(
     middleware=[
         LoggingMiddleware(),
         TimingMiddleware(),
-        # Add more middleware here
     ]
 )
 ```
 
-## Example 1: Using [`__call__`](../api_reference.md#frameio_kit.Middleware.__call__) for Universal Logic
+## Middleware Hooks
+
+The `Middleware` base class provides three hooks:
+
+### `__call__` - Universal Hook
+
+Runs for **all events** (webhooks and actions):
 
 ```python
-import time
-from frameio_kit import App, Middleware, WebhookEvent, Message
+from frameio_kit import Middleware
 from frameio_kit.middleware import AnyEvent, NextFunc, AnyResponse
 
 class TimingMiddleware(Middleware):
     async def __call__(self, event: AnyEvent, next: NextFunc) -> AnyResponse:
         start_time = time.monotonic()
-
         try:
             return await next(event)
         finally:
             duration = time.monotonic() - start_time
             print(f"Completed in {duration:.2f}s")
-
-# Usage
-app = App(
-    token=os.getenv("FRAMEIO_TOKEN"),
-    middleware=[TimingMiddleware()]
-)
-
-@app.on_webhook("file.ready", secret=os.environ["WEBHOOK_SECRET"])
-async def on_file_ready(event: WebhookEvent):
-    print("File ready")
 ```
 
-## Example 2: Using Specific Hooks
+### `on_webhook` - Webhook-Specific
+
+Runs only for **webhook events**:
 
 ```python
-from frameio_kit import App, Middleware, WebhookEvent, ActionEvent, Message
+async def on_webhook(self, event: WebhookEvent, next: NextFunc) -> AnyResponse:
+    print(f"Webhook: {event.type}")
+    return await next(event)
+```
+
+### `on_action` - Action-Specific
+
+Runs only for **custom action events**:
+
+```python
+async def on_action(self, event: ActionEvent, next: NextFunc) -> AnyResponse:
+    print(f"Action: {event.type} by {event.user.name}")
+    return await next(event)
+```
+
+## Examples
+
+### Logging Middleware
+
+```python
+from frameio_kit import Middleware, WebhookEvent, ActionEvent
 from frameio_kit.middleware import NextFunc, AnyResponse
 
 class LoggingMiddleware(Middleware):
     async def on_webhook(self, event: WebhookEvent, next: NextFunc) -> AnyResponse:
         print(f"Webhook: {event.type} for {event.resource_id}")
         return await next(event)
-    
+
     async def on_action(self, event: ActionEvent, next: NextFunc) -> AnyResponse:
         print(f"Action: {event.type} by {event.user.name}")
         return await next(event)
-
-class ValidationMiddleware(Middleware):
-    async def on_webhook(self, event: WebhookEvent, next: NextFunc) -> AnyResponse:
-        if not event.resource_id:
-            raise ValueError("Missing resource_id")
-        return await next(event)
-
-# Usage
-app = App(
-    token=os.getenv("FRAMEIO_TOKEN"),
-    middleware=[LoggingMiddleware(), ValidationMiddleware()]
-)
-
-@app.on_webhook("file.ready", secret=os.environ["WEBHOOK_SECRET"])
-async def on_file_ready(event: WebhookEvent):
-    print("File ready")
-
-@app.on_action("my_app.analyze", "Analyze", "Analyze file", os.environ["ACTION_SECRET"])
-async def analyze_file(event: ActionEvent):
-    return Message(title="Analysis Complete", description="Done!")
 ```
 
-## Best Practices
+### Error Handling Middleware
 
-1. **Order matters**: Middleware runs in the order you register it. Put error handling middleware first.
-
-2. **Keep middleware focused**: Each middleware should have a single responsibility.
-
-3. **Use `super().__call__()` when needed**: If you override [`__call__`](../api_reference.md#frameio_kit.Middleware.__call__) but still want the automatic dispatch to [`on_webhook`](../api_reference.md#frameio_kit.Middleware.on_webhook)/[`on_action`](../api_reference.md#frameio_kit.Middleware.on_action), use `super().__call__(event, next)`.
-
-4. **Handle exceptions gracefully**: Consider whether to re-raise exceptions or return default responses and when to use `try`/`finally` to ensure cleanup.
-
-5. **Make middleware configurable**: Use `__init__` to accept configuration parameters.
-
-6. **Test your middleware**: Write unit tests to ensure your middleware behaves correctly in isolation.
-
-## Advanced Patterns
+```python
+class ErrorHandlerMiddleware(Middleware):
+    async def __call__(self, event: AnyEvent, next: NextFunc) -> AnyResponse:
+        try:
+            return await next(event)
+        except Exception as e:
+            print(f"Error processing {event.type}: {e}")
+            raise
+```
 
 ### Conditional Middleware
-
-You can create middleware that only runs under certain conditions:
 
 ```python
 class ConditionalMiddleware(Middleware):
     def __init__(self, condition_func):
         self.condition_func = condition_func
-    
+
     async def __call__(self, event: AnyEvent, next: NextFunc) -> AnyResponse:
         if self.condition_func(event):
-            # Only run middleware logic if condition is met
             print(f"Condition met for {event.type}")
         return await next(event)
 
@@ -188,34 +128,22 @@ app = App(
 )
 ```
 
-### Middleware with State
+## Important Notes
 
-Middleware can maintain state across requests:
+**Order matters**: Middleware runs in the order you register it
 
-```python
-class RateLimitMiddleware(Middleware):
-    def __init__(self, max_requests_per_minute=60):
-        self.max_requests = max_requests_per_minute
-        self.requests = {}  # Track requests by resource_id
-    
-    async def __call__(self, event: AnyEvent, next: NextFunc) -> AnyResponse:
-        current_time = time.time()
-        resource_id = event.resource_id
-        
-        # Clean old entries
-        self.requests[resource_id] = [
-            req_time for req_time in self.requests.get(resource_id, [])
-            if current_time - req_time < 60
-        ]
-        
-        # Check rate limit
-        if len(self.requests.get(resource_id, [])) >= self.max_requests:
-            raise Exception(f"Rate limit exceeded for resource {resource_id}")
-        
-        # Record this request
-        self.requests.setdefault(resource_id, []).append(current_time)
-        
-        return await next(event)
-```
+**Overriding `__call__`**: When you override `__call__`, you replace the base implementation. To preserve automatic dispatch to `on_webhook` and `on_action`, call `super().__call__(event, next)`
 
-This comprehensive middleware system gives you the flexibility to add powerful cross-cutting concerns to your Frame.io integrations while keeping your handler code clean and focused.
+**Always call `next`**: Your middleware must call `await next(event)` to continue the chain
+
+**Error handling**: Use `try`/`finally` for cleanup code that must run even if errors occur
+
+## Best Practices
+
+**Keep middleware focused** - Each middleware should have a single responsibility
+
+**Order error handlers first** - Put error handling middleware at the start of the chain
+
+**Make middleware configurable** - Use `__init__` to accept configuration parameters
+
+**Test in isolation** - Write unit tests for middleware independently

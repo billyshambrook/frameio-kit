@@ -178,8 +178,8 @@ async def publish_asset(event: ActionEvent):
 ## Example 3: Complex Form
 
 ```python
-import datetime
-from frameio_kit import App, ActionEvent, Message, Form, TextField, TextareaField, CheckboxField, DateField
+import os
+from frameio_kit import App, ActionEvent, Message, Form, TextField, TextareaField, CheckboxField
 
 app = App()
 
@@ -195,47 +195,53 @@ async def schedule_review(event: ActionEvent):
         due_date = event.data.get("due_date")
         urgent = event.data.get("urgent", False)
         notes = event.data.get("notes", "")
-        
+
         priority = "urgent" if urgent else "normal"
         print(f"Scheduling {priority} review with {reviewer} by {due_date}")
-        
+
         return Message(
             title="Review Scheduled",
             description=f"Review assigned to {reviewer} for {due_date}"
         )
-    
+
     return Form(
         title="Schedule Review",
         description="Set up a review for this asset:",
         fields=[
             TextField(label="Reviewer Email", name="reviewer", placeholder="reviewer@company.com"),
-            DateField(label="Due Date", name="due_date", value=datetime.date.today().isoformat()),
+            TextField(label="Due Date", name="due_date", placeholder="YYYY-MM-DD"),
             CheckboxField(label="Urgent", name="urgent", value=False),
             TextareaField(label="Notes", name="notes", placeholder="Additional instructions...")
         ]
     )
 ```
 
-## Setting Up Custom Actions in Frame.io
+## Configuration
 
-1. **Go to Workspace Settings** in Frame.io
-2. **Navigate to Actions** section  
-3. **Create a new Custom Action**:
-   - Name: Display name in UI
-   - Description: What the action does
-   - Event: Must match your `event_type` parameter
-   - URL: Your application's public endpoint
-   - Secret: Copy the generated secret to your environment variables
-4. **Test the action** by right-clicking on an asset
+To set up custom actions in Frame.io:
+
+1. Navigate to **Workspace Settings → Actions**
+2. Click **"Create Custom Action"** and configure:
+   - **Name**: Display name shown in the UI
+   - **Description**: What the action does
+   - **Event**: Must match your `event_type` parameter
+   - **URL**: Your application's public endpoint
+3. Copy the signing secret and add it to your application
+4. Test by right-clicking an asset in Frame.io
 
 ## Best Practices
 
-1. **Keep actions focused** - Each action should do one thing well
-2. **Provide clear feedback** - Use descriptive titles and messages
-3. **Handle form validation** - Check required fields and provide helpful errors
-4. **Use meaningful names** - Make event types and display names descriptive
-5. **Test thoroughly** - Custom actions are user-facing, so they need to work reliably
-6. **Consider user experience** - Keep forms simple and intuitive
+**Keep actions focused** - Each action should do one thing well
+
+**Provide clear feedback** - Use descriptive titles and messages that explain what happened
+
+**Validate form data** - Check required fields and provide helpful error messages
+
+**Use meaningful names** - Make event types and display names descriptive and clear
+
+**Keep forms simple** - Only ask for information you actually need
+
+**Test thoroughly** - Custom actions are user-facing and need to work reliably
 
 ## Two-Step Process
 

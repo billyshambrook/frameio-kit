@@ -1,117 +1,65 @@
-# frameio-kit: Build Powerful Frame.io Integrations in Minutes
+# frameio-kit
 
-**frameio-kit** is the fastest way to build robust, scalable integrations with Frame.io. Stop wrestling with webhook signatures, API authentication, and event parsing – focus on what makes your integration unique.
+Build powerful Frame.io integrations with minimal boilerplate. Stop wrestling with webhook signatures and API authentication – focus on what makes your integration unique.
 
 ```python
-import os
-import uvicorn
 from frameio_kit import App, WebhookEvent, ActionEvent, Message
 
 app = App()
 
-@app.on_webhook("file.ready", secret=os.environ["WEBHOOK_SECRET"])
+@app.on_webhook("file.ready", secret="your-webhook-secret")
 async def on_file_ready(event: WebhookEvent):
     print(f"File {event.resource_id} is ready!")
 
-@app.on_action("my_app.analyze", "Analyze File", "Analyze this file", os.environ["ACTION_SECRET"])
+@app.on_action("my_app.analyze", "Analyze", "Analyze file", "your-action-secret")
 async def analyze_file(event: ActionEvent):
-    return Message(title="Analysis Complete", description="File analyzed successfully!")
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    return Message(title="Done!", description="File analyzed successfully")
 ```
 
-## 🚀 Quick Start
+## Features
 
-Ready to build your first Frame.io integration? Check out our comprehensive documentation:
+- **Decorator-based routing** - Simple `@app.on_webhook` and `@app.on_action` decorators
+- **Type-safe** - Full Pydantic models and type hints throughout
+- **Async-first** - Built on modern async Python for high performance
+- **Secure** - Automatic signature verification for all incoming requests
+- **Batteries included** - Forms, middleware, OAuth, and Frame.io API client
 
-- **[📖 Getting Started Guide](https://billyshambrook.github.io/frameio-kit/usage/getting_started/)** - Get up and running in 5 minutes
-- **[🎣 Webhooks](https://billyshambrook.github.io/frameio-kit/usage/webhooks/)** - React to Frame.io events automatically  
-- **[🎬 Custom Actions](https://billyshambrook.github.io/frameio-kit/usage/custom_actions/)** - Build interactive user experiences
-- **[🌐 Client API](https://billyshambrook.github.io/frameio-kit/usage/client_api/)** - Make calls back to Frame.io's API
-- **[🔄 Middleware](https://billyshambrook.github.io/frameio-kit/usage/middleware/)** - Add cross-cutting concerns to your integration
-
-## ✨ Why frameio-kit?
-
-- **Async-first architecture** - Handle thousands of concurrent webhooks without breaking a sweat
-- **Decorator-based routing** - `@app.on_webhook` and `@app.on_action` make event handling trivial
-- **Automatic validation** - Pydantic models give you full type safety and editor support
-- **Secure by default** - Built-in signature verification for all requests
-- **Zero boilerplate** - No manual JSON parsing or signature verification
-
-## 📦 Installation
-
-We recommend using [uv](https://docs.astral.sh/uv/) for fast, reliable installs:
+## Installation
 
 ```bash
 uv add frameio-kit
-```
-
-Or with pip:
-```bash
+# or
 pip install frameio-kit
 ```
 
-## 📚 Documentation
+## Documentation
 
-Complete documentation is available at [billyshambrook.github.io/frameio-kit](https://billyshambrook.github.io/frameio-kit/), including:
+**[Read the full documentation →](https://billyshambrook.github.io/frameio-kit/)**
 
-## 🤝 Contributing
+- [Getting Started](https://billyshambrook.github.io/frameio-kit/usage/getting_started/) - Build your first integration in 5 minutes
+- [Webhooks](https://billyshambrook.github.io/frameio-kit/usage/webhooks/) - React to Frame.io events
+- [Custom Actions](https://billyshambrook.github.io/frameio-kit/usage/custom_actions/) - Build interactive workflows
+- [Client API](https://billyshambrook.github.io/frameio-kit/usage/client_api/) - Make calls to Frame.io's API
+- [API Reference](https://billyshambrook.github.io/frameio-kit/api_reference/) - Complete API documentation
 
-Contributions are the heart of open source! We welcome improvements, bug fixes, and new features. Whether you're fixing a typo or adding a major feature, every contribution makes frameio-kit better.
+## Contributing
 
-### 📋 Prerequisites
+Contributions welcome! See the [contribution guidelines](CONTRIBUTING.md) for details on:
 
-- Python 3.13+
-- [uv](https://docs.astral.sh/uv/) package manager
+- Setting up your development environment
+- Running tests and code quality checks
+- Submitting pull requests
 
-### 🚀 Quick Start
+### Quick Setup
 
-1. **Fork and clone** the repository:
-   ```bash
-   git clone https://github.com/billyshambrook/frameio-kit.git
-   cd frameio-kit
-   ```
-
-2. **Set up the development environment**:
-   ```bash
-   uv sync
-   source .venv/bin/activate  # or activate via your IDE
-   ```
-
-3. **Install pre-commit hooks**:
-   ```bash
-   uv run pre-commit install
-   ```
-
-### 🧪 Development Workflow
-
-**Run tests:**
 ```bash
+git clone https://github.com/billyshambrook/frameio-kit.git
+cd frameio-kit
+uv sync
+uv run pre-commit install
 uv run pytest
 ```
 
-**Run code quality checks:**
-```bash
-uv run pre-commit run --all-files
-```
+## License
 
-**Build documentation:**
-```bash
-uv run mkdocs serve
-```
-
-### 🔄 Pull Request Process
-
-1. **Fork** the repository on GitHub
-2. **Create** a feature branch from `main`
-3. **Make** your changes with tests and documentation
-4. **Ensure** all tests and pre-commit hooks pass
-5. **Commit** your changes with a clear message
-6. **Push** to your fork and open a pull request
-
-### 💡 Getting Help
-
-- **Questions?** Open a [discussion](https://github.com/billyshambrook/frameio-kit/discussions)
-- **Bug reports?** Open an [issue](https://github.com/billyshambrook/frameio-kit/issues)
-- **Feature requests?** Start with a discussion first!
+MIT License - see [LICENSE](LICENSE) for details.

@@ -54,9 +54,21 @@ async def handler(event: WebhookEvent):
     print(event.workspace_id)   # "ws_123"
 ```
 
-## Event Types
+## Common Event Types
 
-See [Webhook Event Subscriptions](https://developer.staging.frame.io/platform/docs/guides/webhooks#webhook-event-subscriptions) for the full list of event types.
+Frame.io supports many webhook events. Here are the most commonly used:
+
+| Event Type | Triggered When |
+|------------|----------------|
+| `file.ready` | File finishes processing and is ready for viewing |
+| `file.created` | New file is uploaded |
+| `file.deleted` | File is deleted |
+| `comment.created` | New comment is added to a file |
+| `comment.updated` | Comment is edited |
+| `review_link.created` | New review link is generated |
+| `project.created` | New project is created |
+
+For the complete list, see Frame.io's [Webhook Event Subscriptions](https://developer.staging.frame.io/platform/docs/guides/webhooks#webhook-event-subscriptions) documentation.
 
 ## Example 1: File Processing
 
@@ -116,20 +128,50 @@ async def add_processing_comment(event: WebhookEvent):
     )
 ```
 
-## Setting Up Webhooks in Frame.io
+## Configuration
 
-See [Webhook Tutorial](https://developer.staging.frame.io/platform/docs/guides/webhooks#webhook-tutorial) for instructions on how to set up webhooks in Frame.io.
+To set up webhooks in Frame.io:
+
+1. Navigate to **Workspace Settings → Webhooks**
+2. Click **"Create Webhook"**
+3. Select the event types to subscribe to
+4. Enter your webhook URL
+5. Copy the signing secret and add it to your application
+
+For detailed instructions, see Frame.io's [Webhook Tutorial](https://developer.staging.frame.io/platform/docs/guides/webhooks#webhook-tutorial).
 
 ## Best Practices
 
-1. **Handle errors gracefully** - Webhook failures can cause retries
-2. **Keep handlers fast** - Long-running operations should be queued, Frame.io expects a response within 5 seconds
-3. **Handle retries** - Non-2xx or slow responses will cause Frame.io to retry the request up to 5 times (initial + 4 retries)
-4. **Log webhook events** for debugging and monitoring
+**Response Timeout**
 
-## Security Considerations
+Frame.io expects a response within **5 seconds**. For long-running operations, queue the work and return immediately:
 
-- **Use HTTPS** for your webhook endpoints
-- **Validate event data** before processing
-- **Implement rate limiting** to prevent abuse
-- **Monitor for suspicious activity** and unexpected payloads
+```python
+@app.on_webhook("file.ready", secret=os.environ["WEBHOOK_SECRET"])
+async def on_file_ready(event: WebhookEvent):
+    # Queue the work for background processing
+    await task_queue.enqueue(process_file, event.resource_id)
+    # Return immediately
+```
+
+**Handle Retries**
+
+Frame.io retries failed webhooks up to 5 times (initial request + 4 retries). Make your handlers idempotent to safely handle duplicate events.
+
+**Error Handling**
+
+Return appropriate HTTP status codes:
+- **200-299**: Success - no retry
+- **400-499**: Client error - no retry
+- **500-599**: Server error - triggers retry
+
+**Logging**
+
+Log all webhook events for debugging and monitoring. Include the event type, resource ID, and processing result.
+
+## Security
+
+- **HTTPS only** - Use HTTPS in production (Frame.io enforces this)
+- **Signature verification** - Automatically handled by frameio-kit
+- **Rate limiting** - Implement limits to prevent abuse
+- **Validation** - Validate event data before processing

@@ -1,55 +1,21 @@
 # Client API
 
-The Frame.io API client allows you to make authenticated calls back to the Frame.io API from within your handlers. This enables you to fetch data, create resources, and interact with Frame.io programmatically.
+The Frame.io API client enables you to make authenticated calls to Frame.io's REST API from within your handlers. Use it to fetch data, create resources, and build comprehensive workflows.
 
-## Why Use the API Client?
+## When to Use the Client
 
-The API client is essential when you need to:
+Use the API client when you need to:
 
-- **Fetch additional data** about files, projects, or users
-- **Create resources** like comments, annotations, or tasks
-- **Update existing data** in Frame.io
-- **Integrate with Frame.io's full feature set** beyond webhooks and actions
-- **Build comprehensive workflows** that interact with Frame.io data
+- Fetch file, project, or user data
+- Create comments, annotations, or tasks
+- Update resources in Frame.io
+- Build workflows that interact with Frame.io data
 
-## How the API Client Works
-
-1. **Initialize with token** - Provide a Frame.io API token when creating your `App`
-2. **Access via `app.client`** - The client is available as a property on your app instance
-3. **Make async calls** - All API methods are asynchronous and must be awaited
-4. **Handle responses** - API calls return structured data that you can process
-
-```
-Your Handler → app.client → Frame.io API → Response Data
-```
-
-## Initialization
-
-Initialize the client by providing a Frame.io API token:
+## Quick Example
 
 ```python
 import os
-from frameio_kit import App
-
-# Initialize with API token
-app = App(token=os.getenv("FRAMEIO_TOKEN"))
-
-# Client is now available at app.client
-```
-
-### Getting an API Token
-
-Follow the [Server to Server Authentication](https://developer.staging.frame.io/platform/docs/guides/authentication#server-to-server-authentication) guide to get an access token.
-
-## API Structure
-
-See the python examples in Frame.io's [API Reference](https://developer.staging.frame.io/platform/api-reference/account-permissions/index) for the available endpoints.
-
-## Example: File Processing with Comments
-
-```python
-import os
-from frameio_kit import App, WebhookEvent, Message
+from frameio_kit import App, WebhookEvent
 from frameio import CreateCommentParamsData
 
 app = App(token=os.getenv("FRAMEIO_TOKEN"))
@@ -61,62 +27,62 @@ async def process_file(event: WebhookEvent):
         account_id=event.account_id,
         file_id=event.resource_id
     )
-    print(f"Processing: {file.data.name}")
-    
-    # Simulate processing
-    await process_file_content(file)
-    
-    # Add a comment to the file
+
+    # Add a comment
     await app.client.comments.create(
         account_id=event.account_id,
         file_id=event.resource_id,
-        data=CreateCommentParamsData(text="✅ File processed successfully!")
+        data=CreateCommentParamsData(text=f"Processing {file.data.name}...")
     )
-
-async def process_file_content(file):
-    # Your processing logic here
-    pass
 ```
 
-## Best Practices
+## Setup
 
-1. **Always use `await`** - All API calls are asynchronous
-2. **Handle errors gracefully** - API calls can fail for various reasons
-3. **Use appropriate permissions** - Ensure your token has the required scopes
-4. **Cache when possible** - Avoid repeated calls for the same data
-5. **Respect rate limits** - Frame.io has API rate limits
-6. **Use environment variables** for tokens and sensitive data
+### Get an API Token
 
-## Experimental API
+Follow Frame.io's [Server to Server Authentication](https://developer.staging.frame.io/platform/docs/guides/authentication#server-to-server-authentication) guide to obtain an access token.
 
-Access experimental features via `app.client.experimental`:
+### Initialize with Token
 
 ```python
-# Experimental custom actions API
-actions = await app.client.experimental.actions.actions_index(
-    account_id=event.account_id
-    workspace_id=event.workspace_id
-)
+import os
+from frameio_kit import App
+
+app = App(token=os.getenv("FRAMEIO_TOKEN"))
 ```
 
-**Note**: Experimental APIs may change without notice. Use with caution in production.
+The client is automatically available at `app.client` with your token configured.
 
-## Authentication
+## Available Endpoints
 
-### Server-to-Server Authentication (Default)
+The client provides access to all Frame.io API endpoints. See Frame.io's [API Reference](https://developer.staging.frame.io/platform/api-reference/account-permissions/index) for the complete list of available methods and Python examples.
 
-The client automatically handles authentication using your provided token. No additional setup is required - just make sure your token has the necessary permissions for the operations you want to perform.
+Common endpoints include:
+
+- **Files**: `app.client.files.*`
+- **Comments**: `app.client.comments.*`
+- **Projects**: `app.client.projects.*`
+- **Teams**: `app.client.teams.*`
+- **Users**: `app.client.users.*`
+
+All methods are async and must be awaited.
+
+## Authentication Methods
+
+### Server-to-Server (Default)
+
+API calls use your application token automatically:
 
 ```python
 app = App(token=os.getenv("FRAMEIO_TOKEN"))
 
-# Use app.client for S2S authenticated calls
+# API calls use your application token
 file = await app.client.files.show(...)
 ```
 
 ### User Authentication
 
-For user-specific authentication, you can create a client with a user's OAuth token. This attributes API calls to the user in Frame.io activity logs.
+For user-specific operations, create a client with the user's OAuth token:
 
 ```python
 from frameio_kit import Client
@@ -126,10 +92,37 @@ async def my_action(event: ActionEvent):
     # Create client with user's token
     user_client = Client(token=event.user_access_token)
 
-    # API calls are now attributed to the user
+    # API calls are attributed to the user
     file = await user_client.files.show(...)
 
     await user_client.close()
 ```
 
-See the [User Authentication guide](user_auth.md) for details on enabling Adobe Login OAuth.
+See the [User Authentication guide](user_auth.md) for setup instructions.
+
+## Experimental Features
+
+Access experimental APIs via `app.client.experimental`:
+
+```python
+actions = await app.client.experimental.actions.actions_index(
+    account_id=event.account_id,
+    workspace_id=event.workspace_id
+)
+```
+
+**Warning**: Experimental APIs may change without notice. Avoid using in production.
+
+## Best Practices
+
+**Always await API calls** - All methods are async
+
+**Handle errors gracefully** - Network issues and API errors can occur
+
+**Cache when appropriate** - Avoid repeated calls for the same data
+
+**Check token permissions** - Ensure your token has required scopes for the operations you need
+
+**Respect rate limits** - Frame.io enforces API rate limits
+
+**Close user clients** - Always call `await user_client.close()` when using user-specific clients
