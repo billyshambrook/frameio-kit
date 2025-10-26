@@ -128,9 +128,7 @@ class App:
                 storage = MemoryStore()
 
             encryption = TokenEncryption(key=self._oauth_config.encryption_key)
-            self._token_manager = TokenManager(
-                storage=storage, encryption=encryption, oauth_client=self._oauth_client
-            )
+            self._token_manager = TokenManager(storage=storage, encryption=encryption, oauth_client=self._oauth_client)
 
         self._asgi_app = self._create_asgi_app()
 
@@ -200,9 +198,7 @@ class App:
 
         return decorator
 
-    def on_action(
-        self, event_type: str, name: str, description: str, secret: str, *, require_user_auth: bool = False
-    ):
+    def on_action(self, event_type: str, name: str, description: str, secret: str, *, require_user_auth: bool = False):
         """Decorator to register a function as a custom action handler.
 
         This decorator connects an asynchronous function to a Custom Action in the
@@ -321,6 +317,31 @@ class App:
             wrapped = functools.partial(mw.__call__, next=wrapped)
         return wrapped
 
+    async def _check_user_auth(self, event: ActionEvent) -> Form | None:
+        """Check if user is authenticated and return login form if not.
+
+        Args:
+            event: The ActionEvent to check authentication for.
+
+        Returns:
+            Login Form if user needs to authenticate, None if authenticated.
+
+        Raises:
+            RuntimeError: If OAuth not configured but auth required.
+        """
+        if not self._token_manager:
+            raise RuntimeError("User authentication required but OAuth not configured.")
+
+        # Check if user has a valid token
+        user_token_data = await self._token_manager.get_token(event.user_id)
+        if not user_token_data:
+            # User not authenticated - return login form
+            return self._create_login_form(event)
+
+        # Inject user token into event for handler to use
+        event.user_access_token = user_token_data.access_token
+        return None
+
     async def _handle_request(self, request: Request) -> Response:
         """The main ASGI request handler, refactored for clarity."""
         body = await request.body()
@@ -349,26 +370,14 @@ class App:
 
             # Check user authentication if required
             if handler_reg.require_user_auth:
-                if not self._token_manager:
-                    return Response(
-                        "User authentication required but OAuth not configured.", status_code=500
-                    )
-
                 # Only ActionEvent has user_id
                 if not isinstance(event, ActionEvent):
-                    return Response(
-                        "User authentication only supported for action events.", status_code=400
-                    )
+                    return Response("User authentication only supported for action events.", status_code=400)
 
-                # Check if user has a valid token
-                user_token_data = await self._token_manager.get_token(event.user_id)
-                if not user_token_data:
-                    # User not authenticated - return login form
-                    login_form = self._create_login_form(event)
+                # Check if user is authenticated
+                login_form = await self._check_user_auth(event)
+                if login_form:
                     return JSONResponse(login_form.model_dump(exclude_none=True))
-
-                # Inject user token into event for handler to use
-                event.user_access_token = user_token_data.access_token
 
             final_handler = cast(Callable[[AnyEvent], Awaitable[AnyResponse]], handler_reg.func)
             handler_with_middleware = self._build_middleware_chain(final_handler)
@@ -381,6 +390,9 @@ class App:
 
         except ValidationError as e:
             return Response(f"Payload validation error: {e}", status_code=422)
+        except RuntimeError as e:
+            # OAuth configuration errors
+            return Response(str(e), status_code=500)
         except Exception as e:
             print(f"Error processing event '{event_type}': {e}")
             return Response("Internal Server Error", status_code=500)

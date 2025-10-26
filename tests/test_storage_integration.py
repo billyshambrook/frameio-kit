@@ -145,9 +145,7 @@ class TestDiskStoreIntegration:
         assert decrypted.user_id == sample_token_data.user_id
         assert decrypted.access_token == sample_token_data.access_token
 
-    async def test_persistence(
-        self, tmp_path: Path, encryption: TokenEncryption, sample_token_data: TokenData
-    ):
+    async def test_persistence(self, tmp_path: Path, encryption: TokenEncryption, sample_token_data: TokenData):
         """Test that data persists across DiskStore instances."""
         store_path = tmp_path / "persistent_tokens"
         key = "user:persistent"

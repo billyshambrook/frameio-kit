@@ -166,9 +166,7 @@ class TestCallbackEndpoint:
             user_id="",
         )
 
-        with patch.object(
-            test_app.state.oauth_client, "exchange_code", new_callable=AsyncMock
-        ) as mock_exchange:
+        with patch.object(test_app.state.oauth_client, "exchange_code", new_callable=AsyncMock) as mock_exchange:
             mock_exchange.return_value = mock_token_data
 
             response = client.get("/.auth/callback", params={"code": "auth_code_123", "state": state})
@@ -239,9 +237,7 @@ class TestCallbackEndpoint:
         }
 
         # Mock exchange to fail
-        with patch.object(
-            test_app.state.oauth_client, "exchange_code", new_callable=AsyncMock
-        ) as mock_exchange:
+        with patch.object(test_app.state.oauth_client, "exchange_code", new_callable=AsyncMock) as mock_exchange:
             mock_exchange.side_effect = Exception("Token exchange failed")
 
             response = client.get("/.auth/callback", params={"code": "bad_code", "state": state})
