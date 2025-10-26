@@ -95,7 +95,9 @@ class OAuthConfig(BaseModel):
     client_id: str
     client_secret: str
     base_url: str
-    scopes: list[str] = Field(default_factory=lambda: ["openid", "AdobeID", "frameio.api"])
+    scopes: list[str] = Field(
+        default_factory=lambda: ["additional_info.roles", "offline_access", "profile", "email", "openid"]
+    )
     storage: Optional[AsyncKeyValue] = None
     encryption_key: Optional[str] = None
     token_refresh_buffer_seconds: int = 300  # 5 minutes default
@@ -167,7 +169,7 @@ class AdobeOAuthClient:
         self.client_id = client_id
         self.client_secret = client_secret
         self.redirect_uri = redirect_uri
-        self.scopes = scopes or ["openid", "AdobeID", "frameio.api"]
+        self.scopes = scopes or ["additional_info.roles", "offline_access", "profile", "email", "openid"]
 
         # Adobe IMS OAuth 2.0 endpoints
         self.authorization_url = "https://ims-na1.adobelogin.com/ims/authorize/v2"

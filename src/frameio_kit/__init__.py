@@ -1,5 +1,6 @@
 from ._app import ActionHandlerFunc, App, WebhookHandlerFunc
 from ._client import Client
+from ._context import get_user_token
 from ._events import Account, ActionEvent, AnyEvent, Project, Resource, User, WebhookEvent, Workspace
 from ._middleware import Middleware, NextFunc
 from ._oauth import OAuthConfig
@@ -24,6 +25,8 @@ __all__ = [
     "WebhookHandlerFunc",
     # _client.py
     "Client",
+    # _context.py
+    "get_user_token",
     # _events.py
     "Account",
     "ActionEvent",

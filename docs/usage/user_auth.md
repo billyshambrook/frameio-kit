@@ -51,7 +51,7 @@ app = App(
 Add `require_user_auth=True` to actions that need user authentication:
 
 ```python
-from frameio_kit import ActionEvent, Client, Message
+from frameio_kit import ActionEvent, Client, Message, get_user_token
 
 @app.on_action(
     event_type="myapp.process_file",
@@ -61,8 +61,11 @@ from frameio_kit import ActionEvent, Client, Message
     require_user_auth=True,  # Enable user authentication
 )
 async def process_file(event: ActionEvent):
+    # Get the user's token (not exposed on event to prevent accidental logging)
+    token = get_user_token()
+
     # Create a client with the user's token
-    user_client = Client(token=event.user_access_token)
+    user_client = Client(token=token)
 
     # Fetch the authenticated user's profile
     profile = await user_client.users.show()
@@ -86,7 +89,7 @@ async def process_file(event: ActionEvent):
 3. **Login prompt**: If not authenticated, the user sees a "Sign in with Adobe" button
 4. **OAuth flow**: User is redirected to Adobe Login, authorizes your app
 5. **Token storage**: Access and refresh tokens are encrypted and stored
-6. **Handler execution**: Your handler receives `event.user_access_token`
+6. **Handler execution**: Your handler can call `get_user_token()` to retrieve the token
 7. **Automatic refresh**: Tokens are automatically refreshed when expired
 
 ## OAuth Configuration
@@ -308,8 +311,8 @@ async def admin_action(event: ActionEvent):
 # User authentication
 @app.on_action(..., require_user_auth=True)
 async def user_action(event: ActionEvent):
-    # Uses user's token
-    user_client = Client(token=event.user_access_token)
+    # Get user's token from context
+    user_client = Client(token=get_user_token())
     await user_client.files.show(...)
 ```
 

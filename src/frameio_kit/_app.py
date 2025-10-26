@@ -45,6 +45,7 @@ from starlette.types import Receive, Scope, Send
 
 from ._auth_routes import create_auth_routes
 from ._client import Client
+from ._context import _user_token_context
 from ._encryption import TokenEncryption
 from ._events import ActionEvent, AnyEvent, WebhookEvent
 from ._middleware import Middleware
@@ -374,8 +375,8 @@ class App:
             # User not authenticated - return login form
             return self._create_login_form(event)
 
-        # Inject user token into event for handler to use
-        event.user_access_token = user_token_data.access_token
+        # Set user token in request context (not on event to prevent accidental logging)
+        _user_token_context.set(user_token_data.access_token)
         return None
 
     async def _handle_request(self, request: Request) -> Response:

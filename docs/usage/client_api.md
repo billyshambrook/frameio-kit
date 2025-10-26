@@ -119,12 +119,12 @@ file = await app.client.files.show(...)
 For user-specific authentication, you can create a client with a user's OAuth token. This attributes API calls to the user in Frame.io activity logs.
 
 ```python
-from frameio_kit import Client
+from frameio_kit import Client, get_user_token
 
 @app.on_action(..., require_user_auth=True)
 async def my_action(event: ActionEvent):
-    # Create client with user's token
-    user_client = Client(token=event.user_access_token)
+    # Create client with user's token from context
+    user_client = Client(token=get_user_token())
 
     # API calls are now attributed to the user
     file = await user_client.files.show(...)

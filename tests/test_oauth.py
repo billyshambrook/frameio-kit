@@ -374,7 +374,7 @@ class TestOAuthConfig:
         assert config.client_secret == "test_secret"
         assert config.base_url == "https://example.com"
         assert config.redirect_uri == "https://example.com/auth/callback"
-        assert config.scopes == ["openid", "AdobeID", "frameio.api"]
+        assert config.scopes == ["additional_info.roles", "offline_access", "profile", "email", "openid"]
 
     def test_redirect_uri_strips_trailing_slash(self):
         """Test that redirect_uri property strips trailing slash from base_url."""

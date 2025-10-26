@@ -173,16 +173,12 @@ class ActionEvent(_BaseEvent):
             for the initial trigger of an action before a form is displayed.
             When a form is submitted, the keys of this dictionary will match
             the `name` of each form field.
-        user_access_token: The user's OAuth access token, available when the
-            action handler has `require_user_auth=True`. Use this token to
-            create an authenticated Client for user-specific API calls.
     """
 
     account_id: str
     action_id: str
     interaction_id: str
     data: dict[str, Any] | None = None
-    user_access_token: str | None = None
 
     @computed_field
     @property
