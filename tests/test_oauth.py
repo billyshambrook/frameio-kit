@@ -337,6 +337,7 @@ class TestTokenManager:
             mock_refresh.assert_called_once()
 
             # Verify we got the new token
+            assert retrieved is not None
             assert retrieved.access_token == "refreshed_access"
 
     async def test_make_key(self, token_manager: TokenManager):

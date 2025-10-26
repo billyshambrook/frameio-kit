@@ -103,6 +103,7 @@ class TestLoginEndpoint:
 
         state_key = f"oauth_state:{state}"
         state_data = await token_manager.storage.get(state_key)
+        assert state_data is not None
         assert state_data["interaction_id"] == "interaction_456"
 
     def test_login_missing_user_id(self, client: TestClient):
@@ -235,4 +236,5 @@ class TestCreateAuthRoutes:
         routes = create_auth_routes(token_manager, oauth_client)
 
         for route in routes:
+            assert route.methods is not None
             assert "GET" in route.methods

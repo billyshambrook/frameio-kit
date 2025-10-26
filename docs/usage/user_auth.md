@@ -100,11 +100,11 @@ The `OAuthConfig` class accepts the following parameters:
 
 - **`client_id`**: Adobe IMS application client ID from Adobe Developer Console
 - **`client_secret`**: Adobe IMS application client secret
-- **`redirect_uri`**: OAuth callback URI (must match your Adobe Console configuration)
+- **`base_url`**: Base URL of your application (e.g., "https://myapp.com"). The OAuth callback will be automatically constructed as `{base_url}/auth/callback` and must be registered in Adobe Console.
 
 ### Optional Parameters
 
-- **`scopes`**: List of OAuth scopes (default: `["openid", "AdobeID", "frameio.api"]`)
+- **`scopes`**: List of OAuth scopes (default: `["additional_info.roles", "offline_access", "profile", "email", "openid"]`)
 - **`storage`**: Storage backend for tokens (default: `MemoryStore()`)
 - **`encryption_key`**: Explicit encryption key (default: uses environment variable or generates ephemeral key)
 

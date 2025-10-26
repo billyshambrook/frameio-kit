@@ -285,7 +285,7 @@ class App:
             _ = self.client  # Initialize the client
 
         # Store OAuth components in app state for route access
-        if self._oauth_client and self._token_manager:
+        if self._oauth_client and self._token_manager and self._oauth_config:
             app.state.oauth_client = self._oauth_client
             app.state.token_manager = self._token_manager
             app.state.oauth_base_url = self._oauth_config.base_url
@@ -329,7 +329,8 @@ class App:
         from ._responses import LinkField
 
         # Build login URL with user context - include base_url for full URL
-        base_url = self._oauth_config.base_url.rstrip('/')
+        assert self._oauth_config is not None, "OAuth config must be set to create login form"
+        base_url = self._oauth_config.base_url.rstrip("/")
         login_url = f"{base_url}/auth/login?user_id={event.user_id}"
         if event.interaction_id:
             login_url += f"&interaction_id={event.interaction_id}"
