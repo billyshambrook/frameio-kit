@@ -2,15 +2,17 @@
 
 This module provides Fernet symmetric encryption for protecting OAuth tokens at rest.
 Encryption keys can be provided explicitly, loaded from environment variables,
-retrieved from the system keyring (development), or generated ephemerally with warnings.
+or generated ephemerally with warnings.
 """
 
 import os
 import warnings
+from typing import TYPE_CHECKING
 
 from cryptography.fernet import Fernet
 
-from ._storage import TokenData
+if TYPE_CHECKING:
+    from ._oauth import TokenData
 
 
 class TokenEncryption:
@@ -23,8 +25,7 @@ class TokenEncryption:
     Key Loading Hierarchy:
         1. Explicit key parameter (highest priority)
         2. FRAMEIO_AUTH_ENCRYPTION_KEY environment variable
-        3. System keyring (development only, requires keyring package)
-        4. Ephemeral key generation with warning (lowest priority)
+        3. Ephemeral key generation with warning (lowest priority)
 
     Attributes:
         _key: The Fernet encryption key (bytes).
@@ -55,8 +56,7 @@ class TokenEncryption:
         The key is loaded from the first available source:
         1. The `key` parameter if provided
         2. FRAMEIO_AUTH_ENCRYPTION_KEY environment variable
-        3. System keyring (development only)
-        4. Generated ephemerally with warning
+        3. Generated ephemerally with warning
 
         Args:
             key: Optional Base64-encoded Fernet key. If provided, takes precedence
@@ -82,58 +82,19 @@ class TokenEncryption:
         elif key_from_env := os.getenv("FRAMEIO_AUTH_ENCRYPTION_KEY"):
             self._key = key_from_env.encode()
         else:
-            # Development: Try to use system keyring, else ephemeral
-            self._key = self._get_or_create_dev_key()
+            # Generate ephemeral key with warning
+            warnings.warn(
+                "No encryption key configured. "
+                "Using ephemeral key - tokens will be lost on restart. "
+                "Set FRAMEIO_AUTH_ENCRYPTION_KEY in production.",
+                UserWarning,
+                stacklevel=2,
+            )
+            self._key = Fernet.generate_key()
 
         self._fernet = Fernet(self._key)
 
-    def _get_or_create_dev_key(self) -> bytes:
-        """Get encryption key from system keyring or create ephemeral one.
-
-        This method attempts to use the system keyring for persistent key storage
-        during development. If keyring is unavailable or fails, it generates an
-        ephemeral key and warns the developer.
-
-        Returns:
-            Fernet encryption key as bytes.
-
-        Warning:
-            Ephemeral keys are only stored in memory and will be lost on restart,
-            causing all stored tokens to become inaccessible.
-        """
-        try:
-            import keyring
-
-            key = keyring.get_password("frameio-kit", "auth-encryption-key")
-            if key:
-                return key.encode()
-
-            # Create and store new key in keyring
-            key_bytes = Fernet.generate_key()
-            keyring.set_password("frameio-kit", "auth-encryption-key", key_bytes.decode())
-            return key_bytes
-        except ImportError:
-            # Keyring not available - use ephemeral key
-            warnings.warn(
-                "No encryption key configured and keyring unavailable. "
-                "Using ephemeral key - tokens will be lost on restart. "
-                "Set FRAMEIO_AUTH_ENCRYPTION_KEY in production.",
-                UserWarning,
-                stacklevel=3,
-            )
-            return Fernet.generate_key()
-        except Exception:
-            # Keyring failed - use ephemeral key
-            warnings.warn(
-                "Failed to access system keyring. "
-                "Using ephemeral key - tokens will be lost on restart. "
-                "Set FRAMEIO_AUTH_ENCRYPTION_KEY in production.",
-                UserWarning,
-                stacklevel=3,
-            )
-            return Fernet.generate_key()
-
-    def encrypt(self, token_data: TokenData) -> bytes:
+    def encrypt(self, token_data: "TokenData") -> bytes:
         """Encrypt token data to bytes for secure storage.
 
         Serializes the TokenData to JSON and encrypts it using Fernet symmetric
@@ -166,7 +127,7 @@ class TokenEncryption:
         json_data = token_data.model_dump_json()
         return self._fernet.encrypt(json_data.encode())
 
-    def decrypt(self, encrypted_data: bytes) -> TokenData:
+    def decrypt(self, encrypted_data: bytes) -> "TokenData":
         """Decrypt bytes to TokenData object.
 
         Decrypts Fernet-encrypted bytes and deserializes the JSON to a TokenData
@@ -193,6 +154,8 @@ class TokenEncryption:
                 print(f"Expires: {token_data.expires_at}")
             ```
         """
+        from ._oauth import TokenData
+
         decrypted = self._fernet.decrypt(encrypted_data)
         return TokenData.model_validate_json(decrypted)
 

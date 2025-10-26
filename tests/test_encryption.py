@@ -1,15 +1,14 @@
 """Unit tests for token encryption functionality."""
 
-import builtins
 import os
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from cryptography.fernet import Fernet, InvalidToken
 
 from frameio_kit._encryption import TokenEncryption
-from frameio_kit._storage import TokenData
+from frameio_kit._oauth import TokenData
 
 
 @pytest.fixture
@@ -104,90 +103,17 @@ class TestTokenEncryption:
 
             assert decrypted.user_id == sample_token_data.user_id
 
-    def test_ephemeral_key_generation_with_warning_when_no_keyring(self, sample_token_data: TokenData):
-        """Test that ephemeral key is generated with warning when keyring unavailable."""
+    def test_ephemeral_key_generation_with_warning(self, sample_token_data: TokenData):
+        """Test that ephemeral key is generated with warning when no key configured."""
         with patch.dict(os.environ, {}, clear=True):  # Clear all env vars
-            # Mock the keyring import to raise ImportError
-            original_import = builtins.__import__
-
-            def mock_import(name, *args, **kwargs):
-                if name == "keyring":
-                    raise ImportError("Keyring not available")
-                return original_import(name, *args, **kwargs)
-
-            with patch("builtins.__import__", side_effect=mock_import):
-                with pytest.warns(UserWarning, match="Using ephemeral key"):
-                    encryption = TokenEncryption()
-
-                    # Should still work, just with ephemeral key
-                    encrypted = encryption.encrypt(sample_token_data)
-                    decrypted = encryption.decrypt(encrypted)
-
-                    assert decrypted.user_id == sample_token_data.user_id
-
-    def test_keyring_integration(self, sample_token_data: TokenData):
-        """Test keyring integration for key storage (if keyring available)."""
-        with patch.dict(os.environ, {}, clear=True):  # Clear env vars
-            # Mock keyring module
-            mock_keyring = MagicMock()
-            test_key = TokenEncryption.generate_key()
-            mock_keyring.get_password.return_value = test_key
-
-            with patch.dict("sys.modules", {"keyring": mock_keyring}):
+            with pytest.warns(UserWarning, match="Using ephemeral key"):
                 encryption = TokenEncryption()
 
-                # Should have retrieved key from keyring
-                mock_keyring.get_password.assert_called_once_with("frameio-kit", "auth-encryption-key")
-
-                # Should work for encryption/decryption
+                # Should still work, just with ephemeral key
                 encrypted = encryption.encrypt(sample_token_data)
                 decrypted = encryption.decrypt(encrypted)
 
                 assert decrypted.user_id == sample_token_data.user_id
-
-    def test_keyring_creates_new_key_if_none_exists(self, sample_token_data: TokenData):
-        """Test that keyring creates and stores a new key if none exists."""
-        with patch.dict(os.environ, {}, clear=True):  # Clear env vars
-            # Mock keyring module with no existing key
-            mock_keyring = MagicMock()
-            mock_keyring.get_password.return_value = None
-
-            with patch.dict("sys.modules", {"keyring": mock_keyring}):
-                encryption = TokenEncryption()
-
-                # Should have tried to get key
-                mock_keyring.get_password.assert_called_once_with("frameio-kit", "auth-encryption-key")
-
-                # Should have generated new key and stored it
-                # We can't easily mock Fernet.generate_key, but we can verify set_password was called
-                assert mock_keyring.set_password.called
-                call_args = mock_keyring.set_password.call_args
-                assert call_args[0][0] == "frameio-kit"
-                assert call_args[0][1] == "auth-encryption-key"
-                # Third argument should be a valid base64 string (44 chars for Fernet)
-                assert len(call_args[0][2]) == 44
-
-                # Verify encryption still works
-                encrypted = encryption.encrypt(sample_token_data)
-                decrypted = encryption.decrypt(encrypted)
-                assert decrypted.user_id == sample_token_data.user_id
-
-    def test_keyring_failure_falls_back_to_ephemeral(self, sample_token_data: TokenData):
-        """Test that keyring failure falls back to ephemeral key with warning."""
-        with patch.dict(os.environ, {}, clear=True):  # Clear env vars
-            # Mock keyring to raise exception
-            mock_keyring = MagicMock()
-            mock_keyring.get_password.side_effect = Exception("Keyring access denied")
-
-            with patch.dict("sys.modules", {"keyring": mock_keyring}):
-                with pytest.warns(UserWarning, match="Failed to access system keyring"):
-                    encryption = TokenEncryption()
-
-                    # Should still work with ephemeral key
-                    encrypted = encryption.encrypt(sample_token_data)
-                    decrypted = encryption.decrypt(encrypted)
-
-                    assert decrypted.user_id == sample_token_data.user_id
 
     def test_encrypt_different_data_produces_different_output(self, encryption_key: str):
         """Test that encrypting different TokenData produces different encrypted output."""

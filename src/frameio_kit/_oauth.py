@@ -11,7 +11,36 @@ import httpx
 from pydantic import BaseModel, Field
 
 from ._encryption import TokenEncryption
-from ._storage import TokenData
+
+
+class TokenData(BaseModel):
+    """OAuth token data model for secure storage.
+
+    Attributes:
+        access_token: The OAuth access token used for API authentication.
+        refresh_token: The OAuth refresh token used to obtain new access tokens.
+        expires_at: The datetime when the access token expires.
+        scopes: List of OAuth scopes granted for this token.
+        user_id: The Frame.io user ID associated with this token.
+    """
+
+    access_token: str
+    refresh_token: str
+    expires_at: datetime
+    scopes: list[str]
+    user_id: str
+
+    def is_expired(self, buffer_seconds: int = 300) -> bool:
+        """Check if the access token is expired or will expire soon.
+
+        Args:
+            buffer_seconds: Number of seconds before actual expiration to consider
+                the token expired. Defaults to 300 seconds (5 minutes).
+
+        Returns:
+            True if the token is expired or will expire within the buffer period.
+        """
+        return datetime.now() >= (self.expires_at - timedelta(seconds=buffer_seconds))
 
 
 class OAuthConfig(BaseModel):
@@ -27,7 +56,7 @@ class OAuthConfig(BaseModel):
         scopes: List of OAuth scopes to request. Defaults to Frame.io API access.
         storage: Storage backend instance for persisting encrypted tokens.
         encryption_key: Optional encryption key. If None, uses environment variable
-            or system keyring.
+            or generates ephemeral key.
         token_refresh_buffer_seconds: Number of seconds before token expiration to
             trigger automatic refresh. Defaults to 300 seconds (5 minutes). This
             prevents token expiration during ongoing API calls.

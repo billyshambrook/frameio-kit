@@ -15,7 +15,7 @@ from key_value.aio.stores.disk import DiskStore
 from key_value.aio.stores.memory import MemoryStore
 
 from frameio_kit._encryption import TokenEncryption
-from frameio_kit._storage import TokenData
+from frameio_kit._oauth import TokenData
 
 
 def _wrap_encrypted_bytes(encrypted_bytes: bytes) -> dict[str, str]:

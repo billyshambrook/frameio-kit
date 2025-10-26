@@ -5,7 +5,6 @@ including login initiation and callback handling with CSRF protection.
 """
 
 import secrets
-from datetime import datetime, timedelta
 from typing import Any
 
 from starlette.requests import Request
@@ -13,19 +12,6 @@ from starlette.responses import HTMLResponse, RedirectResponse
 from starlette.routing import Route
 
 from ._oauth import AdobeOAuthClient, TokenManager
-
-
-# In-memory state storage for OAuth flow
-# In production with multiple servers, this should be Redis or similar
-_oauth_states: dict[str, dict[str, Any]] = {}
-
-
-def _cleanup_expired_states() -> None:
-    """Remove expired OAuth state tokens (older than 10 minutes)."""
-    cutoff = datetime.now() - timedelta(minutes=10)
-    expired = [state for state, data in _oauth_states.items() if data["created_at"] < cutoff]
-    for state in expired:
-        del _oauth_states[state]
 
 
 async def _login_endpoint(request: Request) -> RedirectResponse | HTMLResponse:
@@ -38,8 +24,9 @@ async def _login_endpoint(request: Request) -> RedirectResponse | HTMLResponse:
     Returns:
         Redirect to Adobe IMS authorization page.
     """
-    # Get oauth client from app state
+    # Get oauth client and token manager from app state
     oauth_client: AdobeOAuthClient = request.app.state.oauth_client
+    token_manager: TokenManager = request.app.state.token_manager
 
     # Extract user context from query params
     user_id = request.query_params.get("user_id")
@@ -51,16 +38,16 @@ async def _login_endpoint(request: Request) -> RedirectResponse | HTMLResponse:
             status_code=400,
         )
 
-    # Clean up expired states periodically
-    _cleanup_expired_states()
-
     # Generate CSRF state token
     state = secrets.token_urlsafe(32)
-    _oauth_states[state] = {
+
+    # Store state in storage backend with 10-minute TTL (600 seconds)
+    state_data: dict[str, Any] = {
         "user_id": user_id,
         "interaction_id": interaction_id,
-        "created_at": datetime.now(),
     }
+    state_key = f"oauth_state:{state}"
+    await token_manager.storage.put(state_key, state_data, ttl=600)
 
     # Redirect to Adobe OAuth
     auth_url = oauth_client.get_authorization_url(state)
@@ -111,8 +98,10 @@ async def _callback_endpoint(request: Request) -> HTMLResponse:
             status_code=400,
         )
 
-    # Verify and retrieve state data (CSRF protection)
-    state_data = _oauth_states.pop(state, None)
+    # Verify and retrieve state data from storage (CSRF protection)
+    state_key = f"oauth_state:{state}"
+    state_data: dict[str, Any] | None = await token_manager.storage.get(state_key)
+
     if not state_data:
         return HTMLResponse(
             """
@@ -128,21 +117,8 @@ async def _callback_endpoint(request: Request) -> HTMLResponse:
             status_code=400,
         )
 
-    # Check state age (max 10 minutes)
-    if datetime.now() - state_data["created_at"] > timedelta(minutes=10):
-        return HTMLResponse(
-            """
-            <html>
-            <head><title>State Expired</title></head>
-            <body>
-                <h1>❌ State Expired</h1>
-                <p>The authentication request took too long and has expired.</p>
-                <p>Please close this window and try again.</p>
-            </body>
-            </html>
-            """,
-            status_code=400,
-        )
+    # Delete state after retrieval (consume once)
+    await token_manager.storage.delete(state_key)
 
     user_id = state_data["user_id"]
 

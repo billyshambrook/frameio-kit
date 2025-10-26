@@ -96,7 +96,7 @@ The `OAuthConfig` class accepts the following parameters:
 
 - **`scopes`**: List of OAuth scopes (default: `["openid", "AdobeID", "frameio.api"]`)
 - **`storage`**: Storage backend for tokens (default: `MemoryStore()`)
-- **`encryption_key`**: Explicit encryption key (default: uses keyring or generates ephemeral key)
+- **`encryption_key`**: Explicit encryption key (default: uses environment variable or generates ephemeral key)
 
 ### Example with All Options
 
@@ -166,8 +166,7 @@ Tokens are encrypted using Fernet symmetric encryption. The encryption key is lo
 
 1. **Explicit key** in `OAuthConfig(encryption_key="...")`
 2. **Environment variable** `FRAMEIO_AUTH_ENCRYPTION_KEY`
-3. **System keyring** (stored in OS keychain)
-4. **Ephemeral key** (generated on startup, lost on restart)
+3. **Ephemeral key** (generated on startup, lost on restart)
 
 ### Production Deployment
 
@@ -240,11 +239,7 @@ For apps running on multiple servers:
 
 1. Use **RedisStore** or similar distributed storage
 2. Ensure all servers use the **same encryption key**
-3. OAuth state storage is in-memory (use Redis if needed)
-
-### Redis OAuth State (Advanced)
-
-The built-in in-memory OAuth state storage works for single-server deployments. For multi-server setups, you may need to implement custom state storage using Redis.
+3. OAuth state uses the same storage backend (automatically distributed)
 
 ## Error Handling
 
