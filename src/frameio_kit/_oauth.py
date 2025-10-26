@@ -28,6 +28,9 @@ class OAuthConfig(BaseModel):
         storage: Storage backend instance for persisting encrypted tokens.
         encryption_key: Optional encryption key. If None, uses environment variable
             or system keyring.
+        token_refresh_buffer_seconds: Number of seconds before token expiration to
+            trigger automatic refresh. Defaults to 300 seconds (5 minutes). This
+            prevents token expiration during ongoing API calls.
 
     Example:
         ```python
@@ -40,6 +43,7 @@ class OAuthConfig(BaseModel):
                 client_secret=os.getenv("ADOBE_CLIENT_SECRET"),
                 redirect_uri="https://myapp.com/.auth/callback",
                 storage=MemoryStore(),
+                token_refresh_buffer_seconds=600,  # Refresh 10 minutes early
             )
         )
         ```
@@ -51,6 +55,7 @@ class OAuthConfig(BaseModel):
     scopes: list[str] = Field(default_factory=lambda: ["openid", "AdobeID", "frameio.api"])
     storage: object = Field(default_factory=lambda: None)  # If None, will be initialized with MemoryStore in App.__init__
     encryption_key: Optional[str] = None
+    token_refresh_buffer_seconds: int = 300  # 5 minutes default
 
 
 class AdobeOAuthClient:
@@ -276,6 +281,7 @@ class TokenManager:
         storage: object,
         encryption: TokenEncryption,
         oauth_client: AdobeOAuthClient,
+        token_refresh_buffer_seconds: int = 300,
     ) -> None:
         """Initialize TokenManager.
 
@@ -283,10 +289,13 @@ class TokenManager:
             storage: py-key-value-aio compatible storage backend.
             encryption: TokenEncryption instance.
             oauth_client: AdobeOAuthClient for token refresh operations.
+            token_refresh_buffer_seconds: Seconds before expiration to refresh tokens.
+                Defaults to 300 seconds (5 minutes).
         """
         self.storage = storage
         self.encryption = encryption
         self.oauth_client = oauth_client
+        self.token_refresh_buffer_seconds = token_refresh_buffer_seconds
 
     def _make_key(self, user_id: str) -> str:
         """Create storage key for user token.
@@ -361,8 +370,8 @@ class TokenManager:
         encrypted = self._unwrap_encrypted_bytes(encrypted_dict)
         token_data = self.encryption.decrypt(encrypted)
 
-        # Check if needs refresh
-        if token_data.is_expired():
+        # Check if needs refresh using configured buffer
+        if token_data.is_expired(buffer_seconds=self.token_refresh_buffer_seconds):
             try:
                 token_data = await self._refresh_token(token_data)
                 await self.store_token(user_id, token_data)

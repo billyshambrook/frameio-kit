@@ -128,7 +128,12 @@ class App:
                 storage = MemoryStore()
 
             encryption = TokenEncryption(key=self._oauth_config.encryption_key)
-            self._token_manager = TokenManager(storage=storage, encryption=encryption, oauth_client=self._oauth_client)
+            self._token_manager = TokenManager(
+                storage=storage,
+                encryption=encryption,
+                oauth_client=self._oauth_client,
+                token_refresh_buffer_seconds=self._oauth_config.token_refresh_buffer_seconds,
+            )
 
         self._asgi_app = self._create_asgi_app()
 
