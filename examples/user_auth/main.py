@@ -81,7 +81,7 @@ File processed successfully using your credentials!
 - File: {file_data.name}
 - Size: {file_data.filesize:,} bytes
 - User: {event.user_id}
-- Type: {file_data.filetype or 'Unknown'}
+- Type: {file_data.filetype or "Unknown"}
 
 All API calls were made as you, so they'll appear under your name in Frame.io activity logs.
         """.strip(),
@@ -137,7 +137,7 @@ if __name__ == "__main__":
 
     print("✅ Starting Frame.io app with user authentication")
     print(f"📍 OAuth callback URL: {os.getenv('REDIRECT_URI', 'http://localhost:8000/.auth/callback')}")
-    print(f"💾 Token storage: ./tokens")
+    print("💾 Token storage: ./tokens")
     print()
     print("OAuth endpoints:")
     print("  - Login: http://localhost:8000/.auth/login")
