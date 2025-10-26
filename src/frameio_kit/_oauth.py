@@ -49,7 +49,7 @@ class OAuthConfig(BaseModel):
     client_secret: str
     redirect_uri: str
     scopes: list[str] = Field(default_factory=lambda: ["openid", "AdobeID", "frameio.api"])
-    storage: object = Field(default_factory=lambda: None)  # Will be initialized with MemoryStore if None
+    storage: object = Field(default_factory=lambda: None)  # If None, will be initialized with MemoryStore in App.__init__
     encryption_key: Optional[str] = None
 
 

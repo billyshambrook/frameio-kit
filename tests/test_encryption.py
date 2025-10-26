@@ -1,5 +1,6 @@
 """Unit tests for token encryption functionality."""
 
+import builtins
 import os
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
@@ -106,14 +107,15 @@ class TestTokenEncryption:
     def test_ephemeral_key_generation_with_warning_when_no_keyring(self, sample_token_data: TokenData):
         """Test that ephemeral key is generated with warning when keyring unavailable."""
         with patch.dict(os.environ, {}, clear=True):  # Clear all env vars
-            # Make keyring unavailable by removing it from sys.modules
-            import sys
+            # Mock the keyring import to raise ImportError
+            original_import = builtins.__import__
 
-            original_modules = sys.modules.copy()
-            if "keyring" in sys.modules:
-                del sys.modules["keyring"]
+            def mock_import(name, *args, **kwargs):
+                if name == "keyring":
+                    raise ImportError("Keyring not available")
+                return original_import(name, *args, **kwargs)
 
-            try:
+            with patch("builtins.__import__", side_effect=mock_import):
                 with pytest.warns(UserWarning, match="Using ephemeral key"):
                     encryption = TokenEncryption()
 
@@ -122,9 +124,6 @@ class TestTokenEncryption:
                     decrypted = encryption.decrypt(encrypted)
 
                     assert decrypted.user_id == sample_token_data.user_id
-            finally:
-                # Restore sys.modules
-                sys.modules.update(original_modules)
 
     def test_keyring_integration(self, sample_token_data: TokenData):
         """Test keyring integration for key storage (if keyring available)."""
