@@ -64,13 +64,19 @@ async def process_file(event: ActionEvent):
     # Create a client with the user's token
     user_client = Client(token=event.user_access_token)
 
+    # Fetch the authenticated user's profile
+    profile = await user_client.users.show()
+
     # Make API calls as the authenticated user
     file = await user_client.files.show(
         account_id=event.account_id,
         file_id=event.resource_id
     )
 
-    return Message(text=f"Processed {file.data.name} as {event.user_id}")
+    return Message(
+        title="File Processed",
+        description=f"Processed {file.data.name} as {profile.data.name}"
+    )
 ```
 
 ## How It Works
