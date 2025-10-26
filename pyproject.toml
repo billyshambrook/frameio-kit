@@ -5,9 +5,11 @@ description = "A Python framework for building Frame.io apps"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "cryptography>=44.0.0",
     "frameio>=0.0.23",
     "frameio-experimental>=0.0.3",
     "httpx>=0.28.1",
+    "py-key-value-aio[disk,keyring,memory]>=0.1.0",
     "pydantic>=2.11.10",
     "starlette>=0.48.0",
 ]
