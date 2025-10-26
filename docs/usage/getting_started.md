@@ -241,9 +241,10 @@ You've successfully built a Frame.io integration that:
 Now that you have a working integration, explore these guides:
 
 - **[Webhooks](webhooks.md)** - Learn about different event types and patterns
-- **[Custom Actions](custom_actions.md)** - Build interactive forms and workflows  
+- **[Custom Actions](custom_actions.md)** - Build interactive forms and workflows
 - **[Client API](client_api.md)** - Make calls back to Frame.io's API
 - **[Middleware](middleware.md)** - Add cross-cutting concerns to your integration
+- **[User Authentication](user_auth.md)** - Enable Adobe Login OAuth for user-specific actions
 
 ## Common Issues
 

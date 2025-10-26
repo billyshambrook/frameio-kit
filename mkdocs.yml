@@ -48,6 +48,7 @@ nav:
       - Custom Actions: usage/custom_actions.md
       - Client API: usage/client_api.md
       - Middleware: usage/middleware.md
+      - User Authentication: usage/user_auth.md
   - API Reference: api_reference.md
 
 plugins:
