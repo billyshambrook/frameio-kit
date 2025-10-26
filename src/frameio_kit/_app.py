@@ -318,7 +318,7 @@ class App:
         Returns:
             A Form with a link to initiate the OAuth flow.
         """
-        from ._responses import FormButton
+        from ._responses import LinkField
 
         # Build login URL with user context
         login_url = f"/.auth/login?user_id={event.user_id}"
@@ -327,12 +327,12 @@ class App:
 
         return Form(
             title="Authentication Required",
-            description="Please sign in with Adobe to continue.",
-            buttons=[
-                FormButton(
-                    text="Sign in with Adobe",
-                    url=login_url,
-                    style="primary",
+            description="Please click the link below to sign in with Adobe and continue.",
+            fields=[
+                LinkField(
+                    label="Sign in with Adobe",
+                    name="login_url",
+                    value=login_url,
                 )
             ],
         )
