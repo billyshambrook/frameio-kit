@@ -18,7 +18,7 @@ def oauth_client() -> AdobeOAuthClient:
     return AdobeOAuthClient(
         client_id="test_client_id",
         client_secret="test_client_secret",
-        redirect_uri="https://example.com/.auth/callback",
+        redirect_uri="https://example.com/auth/callback",
     )
 
 
@@ -32,7 +32,7 @@ def token_manager() -> TokenManager:
     oauth_client = AdobeOAuthClient(
         client_id="test_client_id",
         client_secret="test_client_secret",
-        redirect_uri="https://example.com/.auth/callback",
+        redirect_uri="https://example.com/auth/callback",
     )
     return TokenManager(storage=storage, encryption=encryption, oauth_client=oauth_client)
 
@@ -62,7 +62,7 @@ class TestLoginEndpoint:
 
     def test_login_redirects_to_adobe(self, client: TestClient):
         """Test that login endpoint redirects to Adobe IMS."""
-        response = client.get("/.auth/login", params={"user_id": "user_123"}, follow_redirects=False)
+        response = client.get("/auth/login", params={"user_id": "user_123"}, follow_redirects=False)
 
         assert response.status_code == 307  # RedirectResponse status
         assert "location" in response.headers
@@ -75,7 +75,7 @@ class TestLoginEndpoint:
 
     async def test_login_stores_state(self, client: TestClient, token_manager: TokenManager):
         """Test that login endpoint stores CSRF state in storage."""
-        response = client.get("/.auth/login", params={"user_id": "user_123"}, follow_redirects=False)
+        response = client.get("/auth/login", params={"user_id": "user_123"}, follow_redirects=False)
 
         # Extract state from redirect URL
         location = response.headers["location"]
@@ -91,7 +91,7 @@ class TestLoginEndpoint:
     async def test_login_with_interaction_id(self, client: TestClient, token_manager: TokenManager):
         """Test login with interaction_id parameter."""
         response = client.get(
-            "/.auth/login", params={"user_id": "user_123", "interaction_id": "interaction_456"}, follow_redirects=False
+            "/auth/login", params={"user_id": "user_123", "interaction_id": "interaction_456"}, follow_redirects=False
         )
 
         assert response.status_code == 307
@@ -107,7 +107,7 @@ class TestLoginEndpoint:
 
     def test_login_missing_user_id(self, client: TestClient):
         """Test login without user_id returns error."""
-        response = client.get("/.auth/login")
+        response = client.get("/auth/login")
 
         assert response.status_code == 400
         assert "Missing user_id parameter" in response.text
@@ -142,7 +142,7 @@ class TestCallbackEndpoint:
         with patch.object(test_app.state.oauth_client, "exchange_code", new_callable=AsyncMock) as mock_exchange:
             mock_exchange.return_value = mock_token_data
 
-            response = client.get("/.auth/callback", params={"code": "auth_code_123", "state": state})
+            response = client.get("/auth/callback", params={"code": "auth_code_123", "state": state})
 
             assert response.status_code == 200
             assert "Authentication Successful" in response.text
@@ -158,7 +158,7 @@ class TestCallbackEndpoint:
     def test_callback_with_oauth_error(self, client: TestClient):
         """Test callback with OAuth error from Adobe."""
         response = client.get(
-            "/.auth/callback", params={"error": "access_denied", "error_description": "User denied access"}
+            "/auth/callback", params={"error": "access_denied", "error_description": "User denied access"}
         )
 
         assert response.status_code == 400
@@ -168,21 +168,21 @@ class TestCallbackEndpoint:
 
     def test_callback_missing_code(self, client: TestClient):
         """Test callback without authorization code."""
-        response = client.get("/.auth/callback", params={"state": "some_state"})
+        response = client.get("/auth/callback", params={"state": "some_state"})
 
         assert response.status_code == 400
         assert "Missing code or state parameter" in response.text
 
     def test_callback_missing_state(self, client: TestClient):
         """Test callback without state parameter."""
-        response = client.get("/.auth/callback", params={"code": "some_code"})
+        response = client.get("/auth/callback", params={"code": "some_code"})
 
         assert response.status_code == 400
         assert "Missing code or state parameter" in response.text
 
     def test_callback_invalid_state(self, client: TestClient):
         """Test callback with invalid/unknown state."""
-        response = client.get("/.auth/callback", params={"code": "auth_code", "state": "unknown_state"})
+        response = client.get("/auth/callback", params={"code": "auth_code", "state": "unknown_state"})
 
         assert response.status_code == 400
         assert "Invalid or Expired State" in response.text
@@ -206,7 +206,7 @@ class TestCallbackEndpoint:
         with patch.object(test_app.state.oauth_client, "exchange_code", new_callable=AsyncMock) as mock_exchange:
             mock_exchange.side_effect = Exception("Token exchange failed")
 
-            response = client.get("/.auth/callback", params={"code": "bad_code", "state": state})
+            response = client.get("/auth/callback", params={"code": "bad_code", "state": state})
 
             assert response.status_code == 500
             assert "Authentication Failed" in response.text
@@ -227,8 +227,8 @@ class TestCreateAuthRoutes:
         routes = create_auth_routes(token_manager, oauth_client)
 
         paths = [route.path for route in routes]
-        assert "/.auth/login" in paths
-        assert "/.auth/callback" in paths
+        assert "/auth/login" in paths
+        assert "/auth/callback" in paths
 
     def test_route_methods(self, oauth_client: AdobeOAuthClient, token_manager: TokenManager):
         """Test that routes use GET method."""

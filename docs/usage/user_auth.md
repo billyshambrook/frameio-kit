@@ -24,22 +24,23 @@ First, create an OAuth Web App credential in the [Adobe Developer Console](https
 2. Add the "Frame.io API" service
 3. Create an "OAuth Web App" credential
 4. Note your Client ID and Client Secret
-5. Add your callback URL (e.g., `https://yourapp.com/.auth/callback`)
+5. Add your callback URL (e.g., `https://yourapp.com/auth/callback`)
 
 ### 2. Configure Your App
 
 Initialize your app with OAuth configuration:
 
 ```python
+import os
+
 from frameio_kit import App, OAuthConfig
 from key_value.aio.stores.disk import DiskStore
-import os
 
 app = App(
     oauth=OAuthConfig(
-        client_id=os.getenv("ADOBE_CLIENT_ID"),
-        client_secret=os.getenv("ADOBE_CLIENT_SECRET"),
-        redirect_uri="https://yourapp.com/.auth/callback",
+        client_id=os.environ["ADOBE_CLIENT_ID"],
+        client_secret=os.environ["ADOBE_CLIENT_SECRET"],
+        base_url="https://yourapp.com/auth/callback",
         storage=DiskStore(directory="./tokens"),  # Persist tokens to disk
     )
 )
@@ -56,7 +57,7 @@ from frameio_kit import ActionEvent, Client, Message
     event_type="myapp.process_file",
     name="Process File",
     description="Process file with user credentials",
-    secret=os.getenv("ACTION_SECRET"),
+    secret=os.environ["ACTION_SECRET"],
     require_user_auth=True,  # Enable user authentication
 )
 async def process_file(event: ActionEvent):
@@ -105,12 +106,12 @@ from key_value.aio.stores.redis import RedisStore
 
 app = App(
     oauth=OAuthConfig(
-        client_id=os.getenv("ADOBE_CLIENT_ID"),
-        client_secret=os.getenv("ADOBE_CLIENT_SECRET"),
-        redirect_uri="https://yourapp.com/.auth/callback",
+        client_id=os.environ["ADOBE_CLIENT_ID"],
+        client_secret=os.environ["ADOBE_CLIENT_SECRET"],
+        base_url="https://yourapp.com/auth/callback",
         scopes=["openid", "AdobeID", "frameio.api"],
         storage=RedisStore(url="redis://localhost:6379"),
-        encryption_key=os.getenv("FRAMEIO_AUTH_ENCRYPTION_KEY"),
+        encryption_key=os.environ["FRAMEIO_AUTH_ENCRYPTION_KEY"],
     )
 )
 ```
@@ -158,6 +159,28 @@ app = App(
 )
 ```
 
+### Multi-Server: DynamoDB
+
+Tokens shared across servers via AWS DynamoDB:
+
+```python
+from key_value.aio.stores.dynamodb import DynamoDBStore
+
+app = App(
+    oauth=OAuthConfig(
+        ...,
+        storage=DynamoDBStore(
+            table_name="frameio-oauth-tokens",
+            region_name="us-east-1",
+        ),
+    )
+)
+```
+
+**Note**: DynamoDB table must have:
+- **Partition key**: `key` (String)
+- **TTL attribute**: `ttl` (Number) - Enable TTL on this attribute for automatic cleanup
+
 All storage backends use the [py-key-value-aio](https://github.com/yourusername/py-key-value-aio) library.
 
 ## Encryption Key Management
@@ -186,9 +209,9 @@ Store this key securely (e.g., AWS Secrets Manager, HashiCorp Vault).
 
 When OAuth is configured, the following endpoints are automatically mounted:
 
-- **`GET /.auth/login`**: Initiates OAuth flow
+- **`GET /auth/login`**: Initiates OAuth flow
   - Query params: `user_id` (required), `interaction_id` (optional)
-- **`GET /.auth/callback`**: Handles OAuth callback from Adobe
+- **`GET /auth/callback`**: Handles OAuth callback from Adobe
 
 You don't need to implement these routes - they're handled automatically.
 
@@ -299,7 +322,7 @@ def app():
         oauth=OAuthConfig(
             client_id="test_client_id",
             client_secret="test_client_secret",
-            redirect_uri="http://localhost:8000/.auth/callback",
+            base_url="http://localhost:8000/auth/callback",
             storage=MemoryStore(),
         )
     )

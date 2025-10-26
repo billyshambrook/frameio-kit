@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 import httpx
+from key_value.aio.protocols import AsyncKeyValue
 from pydantic import BaseModel, Field
 
 from ._encryption import TokenEncryption
@@ -52,9 +53,12 @@ class OAuthConfig(BaseModel):
     Attributes:
         client_id: Adobe IMS application client ID from Adobe Developer Console.
         client_secret: Adobe IMS application client secret.
-        redirect_uri: OAuth callback URI (must be registered in Adobe Console).
+        base_url: Base URL of your application (e.g., "https://myapp.com"). The
+            OAuth callback will be automatically constructed as `{base_url}/auth/callback`
+            and must be registered in Adobe Console.
         scopes: List of OAuth scopes to request. Defaults to Frame.io API access.
-        storage: Storage backend instance for persisting encrypted tokens.
+        storage: Storage backend instance for persisting encrypted tokens. If None,
+            defaults to MemoryStore (in-memory, lost on restart).
         encryption_key: Optional encryption key. If None, uses environment variable
             or generates ephemeral key.
         token_refresh_buffer_seconds: Number of seconds before token expiration to
@@ -67,7 +71,7 @@ class OAuthConfig(BaseModel):
     Example:
         ```python
         from frameio_kit import App, OAuthConfig
-        from key_value.aio.stores.memory import MemoryStore
+        from key_value.aio.stores.disk import DiskStore
         import httpx
 
         # With custom HTTP client for connection pooling
@@ -77,8 +81,8 @@ class OAuthConfig(BaseModel):
             oauth=OAuthConfig(
                 client_id=os.getenv("ADOBE_CLIENT_ID"),
                 client_secret=os.getenv("ADOBE_CLIENT_SECRET"),
-                redirect_uri="https://myapp.com/.auth/callback",
-                storage=MemoryStore(),
+                base_url="https://myapp.com",
+                storage=DiskStore(directory="./tokens"),
                 token_refresh_buffer_seconds=600,  # Refresh 10 minutes early
                 http_client=custom_client,  # Share connection pool
             )
@@ -86,14 +90,25 @@ class OAuthConfig(BaseModel):
         ```
     """
 
+    model_config = {"arbitrary_types_allowed": True}
+
     client_id: str
     client_secret: str
-    redirect_uri: str
+    base_url: str
     scopes: list[str] = Field(default_factory=lambda: ["openid", "AdobeID", "frameio.api"])
-    storage: object = Field(default_factory=lambda: None)  # If None, will be initialized with MemoryStore in App.__init__
+    storage: Optional[AsyncKeyValue] = None
     encryption_key: Optional[str] = None
     token_refresh_buffer_seconds: int = 300  # 5 minutes default
-    http_client: object = Field(default=None)  # Optional httpx.AsyncClient
+    http_client: Optional[httpx.AsyncClient] = None
+
+    @property
+    def redirect_uri(self) -> str:
+        """Construct the OAuth redirect URI from the base URL.
+
+        Returns:
+            The full redirect URI (e.g., "https://myapp.com/auth/callback").
+        """
+        return f"{self.base_url.rstrip('/')}/auth/callback"
 
 
 class AdobeOAuthClient:
@@ -324,7 +339,7 @@ class TokenManager:
 
     def __init__(
         self,
-        storage: object,
+        storage: AsyncKeyValue,
         encryption: TokenEncryption,
         oauth_client: AdobeOAuthClient,
         token_refresh_buffer_seconds: int = 300,

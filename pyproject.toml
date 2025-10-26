@@ -59,6 +59,7 @@ dev = [
     "pytest-asyncio>=1.2.0",
     "pytest-xdist>=3.8.0",
     "ruff>=0.6.4",
+    "uvicorn>=0.38.0",
 ]
 
 [project.urls]

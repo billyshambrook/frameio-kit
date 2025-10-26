@@ -198,8 +198,8 @@ def create_auth_routes(token_manager: TokenManager, oauth_client: AdobeOAuthClie
 
     Note:
         These routes will be mounted at:
-        - GET /.auth/login - Initiates OAuth flow
-        - GET /.auth/callback - Handles OAuth callback
+        - GET /auth/login - Initiates OAuth flow
+        - GET /auth/callback - Handles OAuth callback
 
     Example:
         ```python
@@ -211,6 +211,6 @@ def create_auth_routes(token_manager: TokenManager, oauth_client: AdobeOAuthClie
         ```
     """
     return [
-        Route("/.auth/login", _login_endpoint, methods=["GET"]),
-        Route("/.auth/callback", _callback_endpoint, methods=["GET"]),
+        Route("/auth/login", _login_endpoint, methods=["GET"]),
+        Route("/auth/callback", _callback_endpoint, methods=["GET"]),
     ]

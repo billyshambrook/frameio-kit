@@ -17,7 +17,7 @@ def oauth_config() -> OAuthConfig:
     return OAuthConfig(
         client_id="test_client_id",
         client_secret="test_client_secret",
-        redirect_uri="https://example.com/.auth/callback",
+        base_url="https://example.com",
         scopes=["openid", "AdobeID", "frameio.api"],
     )
 
@@ -41,7 +41,7 @@ async def token_manager() -> TokenManager:
     oauth_client = AdobeOAuthClient(
         client_id="test_client_id",
         client_secret="test_client_secret",
-        redirect_uri="https://example.com/.auth/callback",
+        redirect_uri="https://example.com/auth/callback",
     )
     return TokenManager(storage=storage, encryption=encryption, oauth_client=oauth_client)
 
@@ -65,7 +65,7 @@ class TestAdobeOAuthClient:
         """Test OAuth client initialization."""
         assert oauth_client.client_id == "test_client_id"
         assert oauth_client.client_secret == "test_client_secret"
-        assert oauth_client.redirect_uri == "https://example.com/.auth/callback"
+        assert oauth_client.redirect_uri == "https://example.com/auth/callback"
         assert oauth_client.scopes == ["openid", "AdobeID", "frameio.api"]
         assert oauth_client.authorization_url == "https://ims-na1.adobelogin.com/ims/authorize/v2"
         assert oauth_client.token_url == "https://ims-na1.adobelogin.com/ims/token/v3"
@@ -78,7 +78,7 @@ class TestAdobeOAuthClient:
         # Verify URL structure
         assert auth_url.startswith("https://ims-na1.adobelogin.com/ims/authorize/v2?")
         assert "client_id=test_client_id" in auth_url
-        assert "redirect_uri=https%3A%2F%2Fexample.com%2F.auth%2Fcallback" in auth_url
+        assert "redirect_uri=https%3A%2F%2Fexample.com%2Fauth%2Fcallback" in auth_url
         assert "scope=openid+AdobeID+frameio.api" in auth_url
         assert "response_type=code" in auth_url
         assert f"state={state}" in auth_url
@@ -367,20 +367,31 @@ class TestOAuthConfig:
         config = OAuthConfig(
             client_id="test_id",
             client_secret="test_secret",
-            redirect_uri="https://example.com/callback",
+            base_url="https://example.com",
         )
 
         assert config.client_id == "test_id"
         assert config.client_secret == "test_secret"
-        assert config.redirect_uri == "https://example.com/callback"
+        assert config.base_url == "https://example.com"
+        assert config.redirect_uri == "https://example.com/auth/callback"
         assert config.scopes == ["openid", "AdobeID", "frameio.api"]
+
+    def test_redirect_uri_strips_trailing_slash(self):
+        """Test that redirect_uri property strips trailing slash from base_url."""
+        config = OAuthConfig(
+            client_id="test_id",
+            client_secret="test_secret",
+            base_url="https://example.com/",
+        )
+
+        assert config.redirect_uri == "https://example.com/auth/callback"
 
     def test_custom_scopes(self):
         """Test OAuth config with custom scopes."""
         config = OAuthConfig(
             client_id="test_id",
             client_secret="test_secret",
-            redirect_uri="https://example.com/callback",
+            base_url="https://example.com",
             scopes=["openid", "custom_scope"],
         )
 
@@ -391,7 +402,7 @@ class TestOAuthConfig:
         config = OAuthConfig(
             client_id="test_id",
             client_secret="test_secret",
-            redirect_uri="https://example.com/callback",
+            base_url="https://example.com",
         )
 
         assert config.storage is None
@@ -401,7 +412,7 @@ class TestOAuthConfig:
         config = OAuthConfig(
             client_id="test_id",
             client_secret="test_secret",
-            redirect_uri="https://example.com/callback",
+            base_url="https://example.com",
             encryption_key="test_key_12345",
         )
 
@@ -412,7 +423,7 @@ class TestOAuthConfig:
         config = OAuthConfig(
             client_id="test_id",
             client_secret="test_secret",
-            redirect_uri="https://example.com/callback",
+            base_url="https://example.com",
         )
 
         assert config.http_client is None
@@ -423,7 +434,7 @@ class TestOAuthConfig:
         config = OAuthConfig(
             client_id="test_id",
             client_secret="test_secret",
-            redirect_uri="https://example.com/callback",
+            base_url="https://example.com",
             http_client=custom_client,
         )
 

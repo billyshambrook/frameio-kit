@@ -287,6 +287,7 @@ class App:
         if self._oauth_client and self._token_manager:
             app.state.oauth_client = self._oauth_client
             app.state.token_manager = self._token_manager
+            app.state.oauth_base_url = self._oauth_config.base_url
 
         yield
 
@@ -326,8 +327,9 @@ class App:
         """
         from ._responses import LinkField
 
-        # Build login URL with user context
-        login_url = f"/.auth/login?user_id={event.user_id}"
+        # Build login URL with user context - include base_url for full URL
+        base_url = self._oauth_config.base_url.rstrip('/')
+        login_url = f"{base_url}/auth/login?user_id={event.user_id}"
         if event.interaction_id:
             login_url += f"&interaction_id={event.interaction_id}"
 
