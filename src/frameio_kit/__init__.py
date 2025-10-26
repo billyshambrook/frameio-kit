@@ -2,6 +2,7 @@ from ._app import ActionHandlerFunc, App, WebhookHandlerFunc
 from ._client import Client
 from ._events import Account, ActionEvent, AnyEvent, Project, Resource, User, WebhookEvent, Workspace
 from ._middleware import Middleware, NextFunc
+from ._oauth import OAuthConfig
 from ._responses import (
     AnyResponse,
     CheckboxField,
@@ -35,6 +36,8 @@ __all__ = [
     # _middleware.py
     "Middleware",
     "NextFunc",
+    # _oauth.py
+    "OAuthConfig",
     # _responses.py
     "AnyResponse",
     "CheckboxField",
