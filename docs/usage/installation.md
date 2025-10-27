@@ -204,7 +204,7 @@ When installation is enabled, the following routes are automatically added:
 
 - `GET /install` - Installation landing page
 - `GET /install/oauth/login` - OAuth initiation for installation
-- `GET /install/oauth/callback` - OAuth callback
+- `GET /auth/callback` - OAuth callback
 - `GET /install/workspaces` - Workspace selection page
 - `POST /install/process` - Process installation
 - `GET /install/manage` - Manage existing installations
