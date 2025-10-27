@@ -45,6 +45,7 @@ async def analyze_file(event: ActionEvent):
 - [`name`](../api_reference.md#frameio_kit.App.on_action\(name\)) *(str)*: Display name in Frame.io UI
 - [`description`](../api_reference.md#frameio_kit.App.on_action\(description\)) *(str)*: Description shown in UI
 - [`secret`](../api_reference.md#frameio_kit.App.on_action\(secret\)) *(str)*: Signing secret from Frame.io
+- [`require_user_auth`](../api_reference.md#frameio_kit.App.on_action\(require_user_auth\)) *(bool, optional)*: Require user to authenticate via Adobe Login OAuth. When `True`, users must sign in before the action executes. See [User Authentication](user_auth.md) for details.
 
 ## Action Event Object
 

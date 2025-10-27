@@ -43,9 +43,13 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 from starlette.types import Receive, Scope, Send
 
+from ._auth_routes import create_auth_routes
 from ._client import Client
+from ._context import _user_token_context
+from ._encryption import TokenEncryption
 from ._events import ActionEvent, AnyEvent, WebhookEvent
 from ._middleware import Middleware
+from ._oauth import AdobeOAuthClient, OAuthConfig, TokenManager
 from ._responses import AnyResponse, Form, Message
 from ._security import verify_signature
 
@@ -67,6 +71,7 @@ class _HandlerRegistration:
     name: str | None = None
     description: str | None = None
     model: type[AnyEvent] = field(default=WebhookEvent)
+    require_user_auth: bool = False
 
 
 class App:
@@ -82,7 +87,9 @@ class App:
             Frame.io API, available if an `token` was provided.
     """
 
-    def __init__(self, *, token: str | None = None, middleware: list[Middleware] = []) -> None:
+    def __init__(
+        self, *, token: str | None = None, middleware: list[Middleware] = [], oauth: OAuthConfig | None = None
+    ) -> None:
         """Initializes the FrameApp.
 
         Args:
@@ -93,12 +100,42 @@ class App:
                 environment variable.
             middleware: An optional list of middleware classes to process
                 requests before they reach the handler.
+            oauth: Optional OAuth configuration for user authentication. When
+                provided, enables Adobe Login OAuth flow for actions that
+                require user-specific authentication.
         """
         self._token = token
         self._middleware = middleware or []
+        self._oauth_config = oauth
         self._api_client: Client | None = None
         self._webhook_handlers: dict[str, _HandlerRegistration] = {}
         self._action_handlers: dict[str, _HandlerRegistration] = {}
+
+        # Initialize OAuth components if configured
+        self._oauth_client: AdobeOAuthClient | None = None
+        self._token_manager: TokenManager | None = None
+        if self._oauth_config:
+            self._oauth_client = AdobeOAuthClient(
+                client_id=self._oauth_config.client_id,
+                client_secret=self._oauth_config.client_secret,
+                redirect_uri=self._oauth_config.redirect_uri,
+                scopes=self._oauth_config.scopes,
+                http_client=self._oauth_config.http_client,
+            )
+            # Use provided storage or default to MemoryStore
+            storage = self._oauth_config.storage
+            if storage is None:
+                from key_value.aio.stores.memory import MemoryStore
+
+                storage = MemoryStore()
+
+            encryption = TokenEncryption(key=self._oauth_config.encryption_key)
+            self._token_manager = TokenManager(
+                storage=storage,
+                encryption=encryption,
+                oauth_client=self._oauth_client,
+                token_refresh_buffer_seconds=self._oauth_config.token_refresh_buffer_seconds,
+            )
 
         self._asgi_app = self._create_asgi_app()
 
@@ -130,6 +167,34 @@ class App:
         if self._api_client is None:
             self._api_client = Client(token=self._token)
         return self._api_client
+
+    @property
+    def token_manager(self) -> TokenManager:
+        """Provides access to the OAuth token manager.
+
+        This manager handles encrypted token storage, retrieval, and automatic
+        refresh for user authentication. Only available when OAuth is configured.
+
+        Example:
+            ```python
+            # Delete a user's token (logout)
+            await app.token_manager.delete_token(user_id="user_123")
+
+            # Check if user has a token
+            token = await app.token_manager.get_token(user_id="user_123")
+            if token:
+                print("User is authenticated")
+            ```
+
+        Returns:
+            The TokenManager instance for managing user tokens.
+
+        Raises:
+            RuntimeError: If OAuth was not configured during App initialization.
+        """
+        if not self._token_manager:
+            raise RuntimeError("Cannot access token manager. OAuth not configured in App initialization.")
+        return self._token_manager
 
     def on_webhook(self, event_type: str | list[str], secret: str):
         """Decorator to register a function as a webhook event handler.
@@ -168,7 +233,7 @@ class App:
 
         return decorator
 
-    def on_action(self, event_type: str, name: str, description: str, secret: str):
+    def on_action(self, event_type: str, name: str, description: str, secret: str, *, require_user_auth: bool = False):
         """Decorator to register a function as a custom action handler.
 
         This decorator connects an asynchronous function to a Custom Action in the
@@ -195,11 +260,19 @@ class App:
             description: A short, user-visible description of what the action does.
             secret: The mandatory signing secret generated when you create the
                 custom action in Frame.io.
+            require_user_auth: If True, requires user to authenticate via Adobe
+                Login OAuth before executing the handler. OAuth must be configured
+                in App initialization for this to work.
         """
 
         def decorator(func: ActionHandlerFunc):
             self._action_handlers[event_type] = _HandlerRegistration(
-                func=func, secret=secret, name=name, description=description, model=ActionEvent
+                func=func,
+                secret=secret,
+                name=name,
+                description=description,
+                model=ActionEvent,
+                require_user_auth=require_user_auth,
             )
             return func
 
@@ -211,22 +284,68 @@ class App:
         if self._token:
             _ = self.client  # Initialize the client
 
+        # Store OAuth components in app state for route access
+        if self._oauth_client and self._token_manager and self._oauth_config:
+            app.state.oauth_client = self._oauth_client
+            app.state.token_manager = self._token_manager
+            app.state.oauth_base_url = self._oauth_config.base_url
+
         yield
 
         if self._api_client:
             await self._api_client.close()
 
+        if self._oauth_client:
+            await self._oauth_client.close()
+
     def _create_asgi_app(self) -> Starlette:
         """Builds the Starlette ASGI application with routes and lifecycle hooks."""
+        routes = [Route("/", self._handle_request, methods=["POST"])]
+
+        # Add OAuth routes if configured
+        if self._oauth_client and self._token_manager:
+            auth_routes = create_auth_routes(self._token_manager, self._oauth_client)
+            routes.extend(auth_routes)
+
         return Starlette(
             debug=True,
-            routes=[Route("/", self._handle_request, methods=["POST"])],
+            routes=routes,
             lifespan=self._lifespan,
         )
 
     def _find_handler(self, event_type: str) -> _HandlerRegistration | None:
         """Finds the registered handler for a given event type."""
         return self._webhook_handlers.get(event_type) or self._action_handlers.get(event_type)
+
+    def _create_login_form(self, event: ActionEvent) -> Form:
+        """Create a Form prompting the user to authenticate.
+
+        Args:
+            event: The ActionEvent that triggered the auth request.
+
+        Returns:
+            A Form with a link to initiate the OAuth flow.
+        """
+        from ._responses import LinkField
+
+        # Build login URL with user context - include base_url for full URL
+        assert self._oauth_config is not None, "OAuth config must be set to create login form"
+        base_url = self._oauth_config.base_url.rstrip("/")
+        login_url = f"{base_url}/auth/login?user_id={event.user_id}"
+        if event.interaction_id:
+            login_url += f"&interaction_id={event.interaction_id}"
+
+        return Form(
+            title="Authentication Required",
+            description="Please click the link below to sign in with Adobe and continue.",
+            fields=[
+                LinkField(
+                    label="Sign in with Adobe",
+                    name="login_url",
+                    value=login_url,
+                )
+            ],
+        )
 
     def _build_middleware_chain(
         self, handler: Callable[[AnyEvent], Awaitable[AnyResponse]]
@@ -235,6 +354,31 @@ class App:
         for mw in reversed(self._middleware):
             wrapped = functools.partial(mw.__call__, next=wrapped)
         return wrapped
+
+    async def _check_user_auth(self, event: ActionEvent) -> Form | None:
+        """Check if user is authenticated and return login form if not.
+
+        Args:
+            event: The ActionEvent to check authentication for.
+
+        Returns:
+            Login Form if user needs to authenticate, None if authenticated.
+
+        Raises:
+            RuntimeError: If OAuth not configured but auth required.
+        """
+        if not self._token_manager:
+            raise RuntimeError("User authentication required but OAuth not configured.")
+
+        # Check if user has a valid token
+        user_token_data = await self._token_manager.get_token(event.user_id)
+        if not user_token_data:
+            # User not authenticated - return login form
+            return self._create_login_form(event)
+
+        # Set user token in request context (not on event to prevent accidental logging)
+        _user_token_context.set(user_token_data.access_token)
+        return None
 
     async def _handle_request(self, request: Request) -> Response:
         """The main ASGI request handler, refactored for clarity."""
@@ -262,6 +406,17 @@ class App:
         try:
             event = handler_reg.model.model_validate(payload)
 
+            # Check user authentication if required
+            if handler_reg.require_user_auth:
+                # Only ActionEvent has user_id
+                if not isinstance(event, ActionEvent):
+                    return Response("User authentication only supported for action events.", status_code=400)
+
+                # Check if user is authenticated
+                login_form = await self._check_user_auth(event)
+                if login_form:
+                    return JSONResponse(login_form.model_dump(exclude_none=True))
+
             final_handler = cast(Callable[[AnyEvent], Awaitable[AnyResponse]], handler_reg.func)
             handler_with_middleware = self._build_middleware_chain(final_handler)
             response_data = await handler_with_middleware(event)
@@ -273,6 +428,9 @@ class App:
 
         except ValidationError as e:
             return Response(f"Payload validation error: {e}", status_code=422)
+        except RuntimeError as e:
+            # OAuth configuration errors
+            return Response(str(e), status_code=500)
         except Exception as e:
             print(f"Error processing event '{event_type}': {e}")
             return Response("Internal Server Error", status_code=500)

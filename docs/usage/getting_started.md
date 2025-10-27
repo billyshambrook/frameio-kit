@@ -70,7 +70,7 @@ Add this code after the `app = App()` line:
     secret=os.environ["ACTION_SECRET"]
 )
 async def on_greeting(event: ActionEvent):
-    print(f"Hello from {event.user.name}!")
+    print(f"Hello from {event.user.id}!")
     return Message(
         title="Greetings!",
         description="Hello from your first frameio-kit app!"
@@ -170,23 +170,26 @@ Now that you have a public URL, configure Frame.io to send events to your app.
 
 ### Create a Custom Action
 
-1. **Go to Frame.io** and navigate to your workspace settings
+1. **Go to Frame.io** and navigate to your account settings
 2. **Click "Actions"** in the left sidebar
-3. **Click "Create Custom Action"**
+3. **Click "New Action"**
 4. **Fill in the details**:
    - **Name**: `Say Hello`
    - **Description**: `A simple greeting action`
    - **Event**: `greeting.say_hello`
    - **URL**: Your ngrok URL (e.g., `https://abc123.ngrok-free.app`)
+   - **Workspace**: Choose the workspace where this action will be available
 5. **Click "Create"** and **copy the signing secret**
 
 ### Create a Webhook
 
 1. **Go to "Webhooks"** in the same settings page
-2. **Click "Create Webhook"**
+2. **Click "New Webhook"**
 3. **Fill in the details**:
+   - **Webhook Name**: On file ready
    - **Event Types**: Select `file.ready`
-   - **URL**: Your ngrok URL (same as above)
+   - **Webhook URL**: Your ngrok URL (same as above)
+   - **Workspace**: Choose the workspace where this webhook will be available
 4. **Click "Create"** and **copy the signing secret**
 
 ## Step 5: Set Up Environment Variables
@@ -241,9 +244,10 @@ You've successfully built a Frame.io integration that:
 Now that you have a working integration, explore these guides:
 
 - **[Webhooks](webhooks.md)** - Learn about different event types and patterns
-- **[Custom Actions](custom_actions.md)** - Build interactive forms and workflows  
+- **[Custom Actions](custom_actions.md)** - Build interactive forms and workflows
 - **[Client API](client_api.md)** - Make calls back to Frame.io's API
 - **[Middleware](middleware.md)** - Add cross-cutting concerns to your integration
+- **[User Authentication](user_auth.md)** - Enable Adobe Login OAuth for user-specific actions
 
 ## Common Issues
 
