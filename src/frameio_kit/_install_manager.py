@@ -4,7 +4,7 @@ This module handles the creation, update, and deletion of custom actions
 and webhooks via the Frame.io APIs, along with managing installation records.
 """
 
-import secrets
+import logging
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -24,6 +24,8 @@ from ._manifest import AppManifest
 
 if TYPE_CHECKING:
     from ._app import App
+
+logger = logging.getLogger(__name__)
 
 
 class InstallationManager:
@@ -47,7 +49,7 @@ class InstallationManager:
         app: "App",
         storage: AsyncKeyValue,
         encryption: TokenEncryption,
-        manifest: AppManifest,
+        manifest: AppManifest | None = None,
     ) -> None:
         """Initialize installation manager.
 
@@ -55,12 +57,38 @@ class InstallationManager:
             app: The App instance.
             storage: Storage backend for installation records.
             encryption: TokenEncryption for securing secrets.
-            manifest: The app manifest describing what to install.
+            manifest: The app manifest describing what to install. If None,
+                will be generated lazily from registered handlers.
         """
         self.app = app
         self.storage = storage
         self.encryption = encryption
-        self.manifest = manifest
+        self._manifest = manifest
+
+    @property
+    def manifest(self) -> AppManifest:
+        """Get the app manifest, generating it lazily if needed.
+
+        This ensures the manifest is generated after all decorators have been
+        executed and handlers have been registered.
+
+        Returns:
+            The app manifest with all registered actions and webhooks.
+        """
+        if self._manifest is None:
+            from ._manifest import AppManifest
+
+            # Generate manifest from currently registered handlers
+            self._manifest = AppManifest.from_app(
+                app=self.app,
+                app_name=self.app._installation_config.app_name,
+                app_description=self.app._installation_config.app_description,
+                base_url=self.app._oauth_config.base_url,
+                icon_url=self.app._installation_config.app_icon_url,
+                include_actions=self.app._installation_config.include_actions,
+                include_webhooks=self.app._installation_config.include_webhooks,
+            )
+        return self._manifest
 
     def _make_installation_key(self, workspace_id: str) -> str:
         """Create storage key for installation record.
@@ -89,13 +117,15 @@ class InstallationManager:
         user_id: str,
         user_token: str,
         workspace_ids: list[str],
+        force_update: bool = False,
     ) -> InstallationResult:
-        """Install app to one or more workspaces.
+        """Install or update app in one or more workspaces.
 
         Args:
             user_id: Frame.io user ID performing the installation.
             user_token: OAuth access token for API calls.
             workspace_ids: List of workspace IDs to install to.
+            force_update: If True, reinstall even if already installed.
 
         Returns:
             InstallationResult with success/failure per workspace.
@@ -104,7 +134,7 @@ class InstallationManager:
 
         # Create clients for API calls
         client = Client(token=user_token)
-        exp_client = AsyncFrameioExperimental(api_key=user_token)
+        exp_client = AsyncFrameioExperimental(token=user_token, api_version="experimental")
 
         try:
             for workspace_id in workspace_ids:
@@ -114,19 +144,28 @@ class InstallationManager:
                         exp_client=exp_client,
                         user_id=user_id,
                         workspace_id=workspace_id,
+                        force_update=force_update,
                     )
                     result.workspace_results[workspace_id] = True
                 except Exception as e:
+                    logger.error(
+                        "Installation error for workspace %s: %s",
+                        workspace_id,
+                        str(e),
+                        exc_info=True,
+                    )
                     result.success = False
                     result.workspace_results[workspace_id] = False
                     result.errors[workspace_id] = str(e)
 
-            # Update user installation index
-            await self._update_user_index(user_id, workspace_ids, add=True)
+            # Update user installation index for successful installations
+            successful_workspaces = [ws_id for ws_id, success in result.workspace_results.items() if success]
+            if successful_workspaces:
+                await self._update_user_index(user_id, successful_workspaces, add=True)
 
         finally:
             await client.close()
-            # AsyncFrameioExperimental doesn't have a close method, no need to close
+            # AsyncFrameioExperimental doesn't have a close method
 
         return result
 
@@ -136,80 +175,132 @@ class InstallationManager:
         exp_client: AsyncFrameioExperimental,
         user_id: str,
         workspace_id: str,
+        force_update: bool = False,
     ) -> None:
-        """Install app to a single workspace.
+        """Install or update app in a single workspace.
 
         Args:
             client: Frame.io API client.
             exp_client: Experimental API client for custom actions.
             user_id: User performing installation.
             workspace_id: Workspace to install to.
+            force_update: If True, reinstall even if already installed and up to date.
         """
-        # Get workspace info to find account_id
-        workspace = await client.workspaces.show(workspace_id)
-        account_id = workspace.data.account_id
+        logger.info("Installing app to workspace %s", workspace_id)
+
+        # Get account_id by listing all accounts and finding the workspace
+        account_id = None
+        accounts = await client.accounts.index()
+        for account in accounts.data:
+            workspaces = await client.workspaces.index(account_id=account.id)
+            for ws in workspaces.data:
+                if ws.id == workspace_id:
+                    account_id = account.id
+                    break
+            if account_id:
+                break
+
+        if not account_id:
+            raise ValueError(f"Could not find account for workspace {workspace_id}")
 
         # Check if already installed
         existing = await self.get_installation(workspace_id)
-        if existing:
-            # Already installed - could update instead
-            raise ValueError(f"App already installed in workspace {workspace_id}")
+        current_version = self.manifest.compute_hash()
+
+        if existing and existing.status == "active":
+            # Already installed - check if update needed
+            if existing.manifest_version == current_version and not force_update:
+                logger.info("App already up to date in workspace %s", workspace_id)
+                return
+
+            # Update needed - uninstall old version first
+            logger.info("Updating installation in workspace %s", workspace_id)
+            await self._uninstall_workspace(client, exp_client, workspace_id)
 
         installation = InstallationRecord(
             workspace_id=workspace_id,
             account_id=account_id,
             user_id=user_id,
-            manifest_version=self.manifest.compute_hash(),
+            manifest_version=current_version,
         )
 
         # Install actions
+        logger.info("Installing %d custom actions", len(self.manifest.actions))
         for action_manifest in self.manifest.actions:
-            secret = secrets.token_urlsafe(32)
+            try:
+                # Create action via experimental API
+                from frameio_experimental.custom_actions.types import ActionCreateParamsData
 
-            # Create action via experimental API
-            action = await exp_client.custom_actions.create(
-                workspace_id=workspace_id,
-                name=action_manifest.name,
-                description=action_manifest.description,
-                event_type=action_manifest.event_type,
-                webhook_url=f"{self.manifest.base_url.rstrip('/')}",
-                signing_secret=secret,
-            )
-
-            installation.actions.append(
-                InstalledAction(
-                    action_id=action.data.id,
-                    event_type=action_manifest.event_type,
-                    name=action_manifest.name,
-                    description=action_manifest.description,
-                    secret=secret,
+                action = await exp_client.custom_actions.actions_create(
+                    account_id=account_id,
+                    workspace_id=workspace_id,
+                    data=ActionCreateParamsData(
+                        name=action_manifest.name,
+                        description=action_manifest.description,
+                        event=action_manifest.event_type,
+                        url=self.manifest.base_url.rstrip("/"),
+                    ),
                 )
-            )
+
+                # Frame.io generates the secret server-side
+                action_secret = getattr(action.data, "signing_secret", None) or getattr(action.data, "secret", None) or ""
+
+                if not action_secret:
+                    logger.warning("No secret returned for action %s", action_manifest.event_type)
+
+                installation.actions.append(
+                    InstalledAction(
+                        action_id=action.data.id,
+                        event_type=action_manifest.event_type,
+                        name=action_manifest.name,
+                        description=action_manifest.description,
+                        secret=action_secret,
+                    )
+                )
+                logger.debug("Created action %s (ID: %s)", action_manifest.name, action.data.id)
+            except Exception as e:
+                logger.warning(
+                    "Failed to create action %s: %s (Custom actions may not be enabled for this account)",
+                    action_manifest.name,
+                    str(e),
+                )
+                # Continue with webhook installation even if actions fail
 
         # Install webhooks (one webhook with all event types)
+        logger.info("Installing %d webhooks", len(self.manifest.webhooks))
         for webhook_manifest in self.manifest.webhooks:
-            secret = secrets.token_urlsafe(32)
-
             # Create webhook via standard API
+            from frameio.webhooks.types import WebhookCreateParamsData
+
             webhook = await client.webhooks.create(
                 account_id=account_id,
                 workspace_id=workspace_id,
-                url=f"{self.manifest.base_url.rstrip('/')}",
-                event_types=webhook_manifest.event_types,
-                secret=secret,
+                data=WebhookCreateParamsData(
+                    name=webhook_manifest.description,
+                    url=self.manifest.base_url.rstrip("/"),
+                    events=webhook_manifest.event_types,
+                ),
             )
+
+            # Frame.io generates the secret server-side
+            webhook_secret = getattr(webhook.data, "secret", None) or getattr(webhook.data, "signing_secret", None) or ""
+
+            if not webhook_secret:
+                logger.warning("No secret returned for webhook")
 
             installation.webhooks.append(
                 InstalledWebhook(
                     webhook_id=webhook.data.id,
                     event_types=webhook_manifest.event_types,
                     name=webhook_manifest.description,
-                    secret=secret,
+                    secret=webhook_secret,
                 )
             )
+            logger.debug("Created webhook (ID: %s)", webhook.data.id)
 
         # Store installation record (encrypted)
         await self._store_installation(installation)
+        logger.info("Successfully installed app to workspace %s", workspace_id)
 
     async def uninstall(
         self,
@@ -231,7 +322,7 @@ class InstallationManager:
 
         # Create clients for API calls
         client = Client(token=user_token)
-        exp_client = AsyncFrameioExperimental(api_key=user_token)
+        exp_client = AsyncFrameioExperimental(token=user_token, api_version="experimental")
 
         try:
             for workspace_id in workspace_ids:
@@ -271,19 +362,22 @@ class InstallationManager:
         """
         # Get installation record
         installation = await self.get_installation(workspace_id)
-        if not installation:
+        if not installation or installation.status == "uninstalled":
             raise ValueError(f"App not installed in workspace {workspace_id}")
+
+        logger.info("Uninstalling app from workspace %s", workspace_id)
 
         # Delete all custom actions
         for action in installation.actions:
             try:
-                await exp_client.custom_actions.delete(
-                    workspace_id=workspace_id,
+                await exp_client.custom_actions.actions_delete(
+                    account_id=installation.account_id,
                     action_id=action.action_id,
                 )
+                logger.debug("Deleted action %s", action.action_id)
             except Exception as e:
-                # Log but continue
-                print(f"Failed to delete action {action.action_id}: {e}")
+                # Log but continue - resource may already be deleted
+                logger.warning("Failed to delete action %s: %s", action.action_id, str(e))
 
         # Delete all webhooks
         for webhook in installation.webhooks:
@@ -292,14 +386,15 @@ class InstallationManager:
                     account_id=installation.account_id,
                     webhook_id=webhook.webhook_id,
                 )
+                logger.debug("Deleted webhook %s", webhook.webhook_id)
             except Exception as e:
-                # Log but continue
-                print(f"Failed to delete webhook {webhook.webhook_id}: {e}")
+                # Log but continue - resource may already be deleted
+                logger.warning("Failed to delete webhook %s: %s", webhook.webhook_id, str(e))
 
-        # Mark as uninstalled and store
-        installation.status = "uninstalled"
-        installation.updated_at = datetime.now()
-        await self._store_installation(installation)
+        # Delete installation record completely
+        key = self._make_installation_key(workspace_id)
+        await self.storage.delete(key)
+        logger.info("Successfully uninstalled app from workspace %s", workspace_id)
 
     async def get_installation(self, workspace_id: str) -> InstallationRecord | None:
         """Get installation record for a workspace.
@@ -311,14 +406,13 @@ class InstallationManager:
             InstallationRecord if found, None otherwise.
         """
         key = self._make_installation_key(workspace_id)
-        data = await self.storage.get(key)
+        encrypted_data = await self.storage.get(key)
 
-        if data is None:
+        if encrypted_data is None:
             return None
 
         # Decrypt and parse
-        encrypted_json = self._unwrap_encrypted_json(data)
-        decrypted_json = self.encryption._fernet.decrypt(encrypted_json.encode()).decode()
+        decrypted_json = self.encryption._fernet.decrypt(encrypted_data.encode()).decode()
         return InstallationRecord.model_validate_json(decrypted_json)
 
     async def list_installations(self, user_id: str) -> list[InstallationRecord]:
@@ -386,11 +480,10 @@ class InstallationManager:
 
         # Encrypt entire record
         json_data = installation.model_dump_json()
-        encrypted = self.encryption._fernet.encrypt(json_data.encode())
-        wrapped = self._wrap_encrypted_json(encrypted.decode())
+        encrypted = self.encryption._fernet.encrypt(json_data.encode()).decode()
 
         # Store with no TTL (permanent until explicitly deleted)
-        await self.storage.put(key, wrapped)
+        await self.storage.put(key, encrypted)
 
     async def _update_user_index(
         self,
@@ -423,27 +516,5 @@ class InstallationManager:
         index.workspace_ids = sorted(list(workspace_set))
         index.updated_at = datetime.now()
 
-        # Store updated index
-        await self.storage.put(key, index.model_dump())
-
-    def _wrap_encrypted_json(self, encrypted_str: str) -> dict[str, str]:
-        """Wrap encrypted JSON string for storage.
-
-        Args:
-            encrypted_str: Encrypted string.
-
-        Returns:
-            Dictionary for storage.
-        """
-        return {"encrypted_installation": encrypted_str}
-
-    def _unwrap_encrypted_json(self, data: dict[str, str]) -> str:
-        """Unwrap encrypted JSON from storage.
-
-        Args:
-            data: Dictionary from storage.
-
-        Returns:
-            Encrypted string.
-        """
-        return data["encrypted_installation"]
+        # Store updated index (use mode='json' to serialize datetime properly)
+        await self.storage.put(key, index.model_dump(mode="json"))

@@ -205,7 +205,8 @@ def test_installation_routes_added(oauth_config, installation_config):
 
     assert "/install" in routes
     assert "/install/oauth/login" in routes
-    assert "/install/oauth/callback" in routes
+    # OAuth callback is handled by /auth/callback (not /install/oauth/callback)
+    assert "/auth/callback" in routes
     assert "/install/workspaces" in routes
     assert "/install/process" in routes
     assert "/install/manage" in routes

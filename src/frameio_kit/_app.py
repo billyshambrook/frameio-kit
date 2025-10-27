@@ -156,26 +156,16 @@ class App:
             )
 
             # Initialize installation manager if installation is enabled
+            # Note: Manifest generation is deferred until first access to ensure
+            # all handlers have been registered via decorators
             if self._installation_config and self._installation_config.enabled:
                 from ._install_manager import InstallationManager
-                from ._manifest import AppManifest
-
-                # Generate manifest from registered handlers
-                manifest = AppManifest.from_app(
-                    app=self,
-                    app_name=self._installation_config.app_name,
-                    app_description=self._installation_config.app_description,
-                    base_url=self._oauth_config.base_url,
-                    icon_url=self._installation_config.app_icon_url,
-                    include_actions=self._installation_config.include_actions,
-                    include_webhooks=self._installation_config.include_webhooks,
-                )
 
                 self._installation_manager = InstallationManager(
                     app=self,
                     storage=storage,
                     encryption=encryption,
-                    manifest=manifest,
+                    manifest=None,  # Will be lazily generated
                 )
 
         self._asgi_app = self._create_asgi_app()

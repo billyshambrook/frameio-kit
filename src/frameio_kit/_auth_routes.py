@@ -54,8 +54,10 @@ async def _login_endpoint(request: Request) -> RedirectResponse | HTMLResponse:
     return RedirectResponse(auth_url)
 
 
-async def _callback_endpoint(request: Request) -> HTMLResponse:
+async def _callback_endpoint(request: Request) -> HTMLResponse | RedirectResponse:
     """Handle OAuth callback from Adobe IMS.
+
+    Supports both regular authentication and installation flows.
 
     Query parameters:
         code: Authorization code (present on success)
@@ -63,7 +65,7 @@ async def _callback_endpoint(request: Request) -> HTMLResponse:
         error: Error code (present on failure)
 
     Returns:
-        HTML page with success or error message.
+        HTML page with success or error message, or redirect to workspace selection for installation.
     """
     # Get token manager and oauth client from app state
     token_manager: TokenManager = request.app.state.token_manager
@@ -120,11 +122,49 @@ async def _callback_endpoint(request: Request) -> HTMLResponse:
     # Delete state after retrieval (consume once)
     await token_manager.storage.delete(state_key)
 
-    user_id = state_data["user_id"]
-
     try:
         # Exchange code for tokens
         token_data = await oauth_client.exchange_code(code)
+
+        # Check if this is an installation flow
+        if state_data.get("flow") == "installation":
+            # Installation flow - get user ID and redirect to workspace selection
+            from ._client import Client
+
+            temp_client = Client(token=token_data.access_token)
+            try:
+                user = await temp_client.users.show()
+                user_id = user.data.id
+            finally:
+                await temp_client.close()
+
+            # Store token temporarily for installation process
+            import secrets
+
+            install_session_id = secrets.token_urlsafe(32)
+            session_key = f"install_session:{install_session_id}"
+            await token_manager.storage.put(
+                session_key,
+                {
+                    "user_id": user_id,
+                    "access_token": token_data.access_token,
+                },
+                ttl=600,  # 10 minutes
+            )
+
+            # Redirect to workspace selection
+            base_url: str = request.app.state.install_base_url
+            return RedirectResponse(f"{base_url}/install/workspaces?session={install_session_id}")
+
+        # Regular auth flow - user_id is required
+        user_id = state_data.get("user_id")
+        if not user_id:
+            return HTMLResponse(
+                "<h1>Error</h1><p>Missing user_id in authentication state</p>",
+                status_code=400,
+            )
+
+        # Store token for regular auth
         await token_manager.store_token(user_id, token_data)
 
         # Success page
@@ -171,6 +211,10 @@ async def _callback_endpoint(request: Request) -> HTMLResponse:
             """
         )
     except Exception as e:
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.error("OAuth callback error: %s", str(e), exc_info=True)
         return HTMLResponse(
             f"""
             <html>
