@@ -132,7 +132,7 @@ class AdobeOAuthClient:
         oauth_client = AdobeOAuthClient(
             client_id="your_client_id",
             client_secret="your_client_secret",
-            redirect_uri="https://myapp.com/.auth/callback",
+            redirect_uri="https://myapp.com/auth/callback",
             scopes=["openid", "frameio.api"]
         )
 
