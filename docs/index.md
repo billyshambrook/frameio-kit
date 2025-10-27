@@ -52,6 +52,7 @@ async def analyze_file(event: ActionEvent):
 - **[Custom Actions](usage/custom_actions.md)** - Build interactive user experiences
 - **[Client API](usage/client_api.md)** - Make calls back to Frame.io's API
 - **[Middleware](usage/middleware.md)** - Add cross-cutting concerns to your integration
+- **[User Authentication](usage/user_auth.md)** - Enable Adobe Login OAuth for user-specific actions
 
 ### **Advanced Features**
 - **[API Reference](api_reference.md)** - Complete documentation for all classes and methods
