@@ -40,7 +40,7 @@ app = App(
     oauth=OAuthConfig(
         client_id=os.environ["ADOBE_CLIENT_ID"],
         client_secret=os.environ["ADOBE_CLIENT_SECRET"],
-        base_url="https://yourapp.com/auth/callback",
+        base_url="https://yourapp.com",
         storage=DiskStore(directory="./tokens"),  # Persist tokens to disk
     )
 )
@@ -190,7 +190,7 @@ app = App(
 - **Partition key**: `key` (String)
 - **TTL attribute**: `ttl` (Number) - Enable TTL on this attribute for automatic cleanup
 
-All storage backends use the [py-key-value-aio](https://github.com/yourusername/py-key-value-aio) library.
+All storage backends use the [py-key-value-aio](https://github.com/strawgate/py-key-value) library.
 
 ## Encryption Key Management
 

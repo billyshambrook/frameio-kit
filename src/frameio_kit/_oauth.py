@@ -466,7 +466,8 @@ class TokenManager:
         wrapped = self._wrap_encrypted_bytes(encrypted)
 
         # TTL: token lifetime + 1 day buffer for refresh
-        ttl = int((token_data.expires_at - datetime.now()).total_seconds()) + 86400
+        # Ensure TTL is never negative (can happen with already-expired tokens during testing)
+        ttl = max(0, int((token_data.expires_at - datetime.now()).total_seconds()) + 86400)
 
         await self.storage.put(key, wrapped, ttl=ttl)
 
