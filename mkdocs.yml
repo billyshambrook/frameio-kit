@@ -46,6 +46,7 @@ nav:
       - Getting Started: usage/getting_started.md
       - Webhooks: usage/webhooks.md
       - Custom Actions: usage/custom_actions.md
+      - App Installation: usage/installation.md
       - Client API: usage/client_api.md
       - Middleware: usage/middleware.md
       - User Authentication: usage/user_auth.md
