@@ -2,6 +2,7 @@ from ._app import ActionHandlerFunc, App, WebhookHandlerFunc
 from ._client import Client
 from ._context import get_user_token
 from ._events import Account, ActionEvent, AnyEvent, Project, Resource, User, WebhookEvent, Workspace
+from ._install_models import InstallationConfig, InstallationRecord, InstallationResult
 from ._middleware import Middleware, NextFunc
 from ._oauth import OAuthConfig
 from ._responses import (
@@ -36,6 +37,10 @@ __all__ = [
     "WebhookEvent",
     "Workspace",
     "AnyEvent",
+    # _install_models.py
+    "InstallationConfig",
+    "InstallationRecord",
+    "InstallationResult",
     # _middleware.py
     "Middleware",
     "NextFunc",

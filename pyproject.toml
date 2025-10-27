@@ -11,6 +11,7 @@ dependencies = [
     "httpx>=0.28.1",
     "py-key-value-aio[disk,memory]>=0.1.0",
     "pydantic>=2.11.10",
+    "python-multipart>=0.0.20",
     "starlette>=0.48.0",
 ]
 license = "MIT"
@@ -54,6 +55,7 @@ dev = [
     "mkdocs-material>=9.6.21",
     "mkdocstrings-python>=1.18.2",
     "pre-commit>=4.3.0",
+    "py-key-value-aio[dynamodb]>=0.2.8",
     "pyrefly>=0.35.0",
     "pytest>=8.4.2",
     "pytest-asyncio>=1.2.0",
