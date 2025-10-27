@@ -18,6 +18,11 @@ from frameio_kit._encryption import TokenEncryption
 from frameio_kit._oauth import TokenData
 
 
+# Note: These helpers duplicate TokenManager._wrap_encrypted_bytes() and
+# TokenManager._unwrap_encrypted_bytes() intentionally for test isolation.
+# They allow testing storage integration without depending on TokenManager internals.
+
+
 def _wrap_encrypted_bytes(encrypted_bytes: bytes) -> dict[str, str]:
     """Wrap encrypted bytes in dict format for py-key-value-aio stores."""
     return {"encrypted_token": base64.b64encode(encrypted_bytes).decode("utf-8")}

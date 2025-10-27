@@ -117,7 +117,7 @@ app = App(
     oauth=OAuthConfig(
         client_id=os.environ["ADOBE_CLIENT_ID"],
         client_secret=os.environ["ADOBE_CLIENT_SECRET"],
-        base_url="https://yourapp.com/auth/callback",
+        base_url="https://yourapp.com",
         scopes=["openid", "AdobeID", "frameio.api"],
         storage=RedisStore(url="redis://localhost:6379"),
         encryption_key=os.environ["FRAMEIO_AUTH_ENCRYPTION_KEY"],
@@ -331,7 +331,7 @@ def app():
         oauth=OAuthConfig(
             client_id="test_client_id",
             client_secret="test_client_secret",
-            base_url="http://localhost:8000/auth/callback",
+            base_url="http://localhost:8000",
             storage=MemoryStore(),
         )
     )
