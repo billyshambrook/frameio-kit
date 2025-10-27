@@ -29,17 +29,19 @@ Create an OAuth credential in the [Adobe Developer Console](https://developer.ad
 ```python
 import os
 from frameio_kit import App, OAuthConfig
-from key_value.aio.stores.disk import DiskStore
 
 app = App(
     oauth=OAuthConfig(
         client_id=os.environ["ADOBE_CLIENT_ID"],
         client_secret=os.environ["ADOBE_CLIENT_SECRET"],
         base_url="https://yourapp.com",
-        storage=DiskStore(directory="./tokens"),
     )
 )
 ```
+
+!!! note "Token Storage"
+
+    By default, tokens are stored in memory and lost on restart. For multi-server deployments or persistence, see [Storage Backends](#storage-backends).
 
 ### 3. Require Auth in Actions
 
@@ -60,6 +62,9 @@ async def process_file(event: ActionEvent):
     # Create client with user's token
     user_client = Client(token=token)
 
+    # Fetch the authenticated user's profile
+    profile = await user_client.users.show()
+
     # Make API calls as the user
     file = await user_client.files.show(
         account_id=event.account_id,
@@ -67,7 +72,10 @@ async def process_file(event: ActionEvent):
     )
 
     await user_client.close()
-    return Message(text=f"Processed {file.data.name}")
+    return Message(
+        title="File Processed",
+        description=f"Processed {file.data.name} as {profile.data.name}"
+    )
 ```
 
 ## How It Works

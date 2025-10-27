@@ -4,7 +4,6 @@
 
 ```python
 import os
-import uvicorn
 from frameio_kit import App, WebhookEvent, ActionEvent, Message
 
 app = App()
@@ -16,9 +15,6 @@ async def on_file_ready(event: WebhookEvent):
 @app.on_action("my_app.analyze", "Analyze File", "Analyze this file", os.environ["ACTION_SECRET"])
 async def analyze_file(event: ActionEvent):
     return Message(title="Analysis Complete", description="File analyzed successfully!")
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
 ```
 
 ## 🚀 Quick Start

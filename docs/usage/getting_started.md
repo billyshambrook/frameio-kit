@@ -41,7 +41,6 @@ Create a file named `main.py` with the following code:
 
 ```python
 import os
-import uvicorn
 from frameio_kit import App, ActionEvent, WebhookEvent, Message
 
 app = App()
@@ -64,9 +63,6 @@ async def on_greeting(event: ActionEvent):
 @app.on_webhook("file.ready", secret=os.environ["WEBHOOK_SECRET"])
 async def on_file_ready(event: WebhookEvent):
     print(f"File {event.resource_id} is ready!")
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
 ```
 
 **What this code does:**
@@ -74,7 +70,7 @@ if __name__ == "__main__":
 - **Custom Action** - Creates a "Say Hello" menu item in Frame.io that displays a greeting when clicked
 - **Webhook** - Listens for `file.ready` events and prints the file ID when files are processed
 - **`App()`** - Initializes your Frame.io integration
-- **`Message`** - Returns a response that displays in the Frame.io UI
+- **`Message`** - Returned from the custom action handler to display a response in the Frame.io UI
 
 Learn more about [Custom Actions](custom_actions.md) and [Webhooks](webhooks.md)
 
