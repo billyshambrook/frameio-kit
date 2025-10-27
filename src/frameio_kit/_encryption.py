@@ -159,6 +159,59 @@ class TokenEncryption:
         decrypted = self._fernet.decrypt(encrypted_data)
         return TokenData.model_validate_json(decrypted)
 
+    def encrypt_string(self, data: str) -> str:
+        """Encrypt a string and return base64-encoded result.
+
+        Encrypts a string value using Fernet symmetric encryption and returns
+        the result as a base64-encoded string suitable for storage.
+
+        Args:
+            data: The plaintext string to encrypt.
+
+        Returns:
+            Base64-encoded encrypted string.
+
+        Raises:
+            Exception: If encryption fails.
+
+        Example:
+            ```python
+            # Encrypt sensitive data
+            installation_json = installation.model_dump_json()
+            encrypted_str = encryption.encrypt_string(installation_json)
+
+            # Store encrypted string
+            await storage.put(key, encrypted_str)
+            ```
+        """
+        return self._fernet.encrypt(data.encode()).decode()
+
+    def decrypt_string(self, encrypted: str) -> str:
+        """Decrypt a base64-encoded encrypted string.
+
+        Decrypts a base64-encoded Fernet-encrypted string back to plaintext.
+
+        Args:
+            encrypted: The base64-encoded encrypted string.
+
+        Returns:
+            Decrypted plaintext string.
+
+        Raises:
+            cryptography.fernet.InvalidToken: If decryption fails (wrong key or corrupted data).
+
+        Example:
+            ```python
+            # Retrieve encrypted data
+            encrypted_str = await storage.get(key)
+
+            if encrypted_str:
+                decrypted_json = encryption.decrypt_string(encrypted_str)
+                installation = InstallationRecord.model_validate_json(decrypted_json)
+            ```
+        """
+        return self._fernet.decrypt(encrypted.encode()).decode()
+
     @staticmethod
     def generate_key() -> str:
         """Generate a new Fernet encryption key for production use.

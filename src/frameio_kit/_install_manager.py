@@ -355,10 +355,18 @@ class InstallationManager:
     ) -> None:
         """Uninstall app from a single workspace.
 
+        Tracks all deletion failures and only removes the installation record
+        if all resources were successfully deleted. If any deletions fail,
+        updates the installation status to "error" for manual cleanup.
+
         Args:
             client: Frame.io API client.
             exp_client: Experimental API client.
             workspace_id: Workspace to uninstall from.
+
+        Raises:
+            ValueError: If app is not installed in the workspace.
+            RuntimeError: If resource deletion failures occurred.
         """
         # Get installation record
         installation = await self.get_installation(workspace_id)
@@ -366,6 +374,9 @@ class InstallationManager:
             raise ValueError(f"App not installed in workspace {workspace_id}")
 
         logger.info("Uninstalling app from workspace %s", workspace_id)
+
+        # Track all deletion failures
+        failed_deletions: list[tuple[str, str, str]] = []
 
         # Delete all custom actions
         for action in installation.actions:
@@ -376,8 +387,10 @@ class InstallationManager:
                 )
                 logger.debug("Deleted action %s", action.action_id)
             except Exception as e:
-                # Log but continue - resource may already be deleted
-                logger.warning("Failed to delete action %s: %s", action.action_id, str(e))
+                # Track failure for reporting
+                error_msg = str(e)
+                failed_deletions.append(("action", action.action_id, error_msg))
+                logger.warning("Failed to delete action %s: %s", action.action_id, error_msg)
 
         # Delete all webhooks
         for webhook in installation.webhooks:
@@ -388,10 +401,34 @@ class InstallationManager:
                 )
                 logger.debug("Deleted webhook %s", webhook.webhook_id)
             except Exception as e:
-                # Log but continue - resource may already be deleted
-                logger.warning("Failed to delete webhook %s: %s", webhook.webhook_id, str(e))
+                # Track failure for reporting
+                error_msg = str(e)
+                failed_deletions.append(("webhook", webhook.webhook_id, error_msg))
+                logger.warning("Failed to delete webhook %s: %s", webhook.webhook_id, error_msg)
 
-        # Delete installation record completely
+        # Handle deletion results
+        if failed_deletions:
+            # Some resources couldn't be deleted - update status to error
+            installation.status = "error"
+            installation.updated_at = datetime.now()
+            await self._store_installation(installation)
+
+            # Provide detailed error message
+            failure_summary = "; ".join(
+                f"{res_type} {res_id}: {error}" for res_type, res_id, error in failed_deletions
+            )
+            logger.error(
+                "Failed to delete %d resources from workspace %s: %s",
+                len(failed_deletions),
+                workspace_id,
+                failure_summary,
+            )
+            raise RuntimeError(
+                f"Failed to delete {len(failed_deletions)} resources. "
+                f"Installation marked as error. Manual cleanup may be required."
+            )
+
+        # All resources deleted successfully - remove installation record
         key = self._make_installation_key(workspace_id)
         await self.storage.delete(key)
         logger.info("Successfully uninstalled app from workspace %s", workspace_id)
@@ -412,7 +449,7 @@ class InstallationManager:
             return None
 
         # Decrypt and parse
-        decrypted_json = self.encryption._fernet.decrypt(encrypted_data.encode()).decode()
+        decrypted_json = self.encryption.decrypt_string(encrypted_data)
         return InstallationRecord.model_validate_json(decrypted_json)
 
     async def list_installations(self, user_id: str) -> list[InstallationRecord]:
@@ -480,7 +517,7 @@ class InstallationManager:
 
         # Encrypt entire record
         json_data = installation.model_dump_json()
-        encrypted = self.encryption._fernet.encrypt(json_data.encode()).decode()
+        encrypted = self.encryption.encrypt_string(json_data)
 
         # Store with no TTL (permanent until explicitly deleted)
         await self.storage.put(key, encrypted)

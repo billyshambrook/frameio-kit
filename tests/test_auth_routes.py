@@ -211,7 +211,9 @@ class TestCallbackEndpoint:
 
             assert response.status_code == 500
             assert "Authentication Failed" in response.text
-            assert "Token exchange failed" in response.text
+            # Error details should not be exposed to users for security
+            assert "An unexpected error occurred" in response.text
+            assert "Token exchange failed" not in response.text
 
 
 class TestCreateAuthRoutes:

@@ -6,6 +6,7 @@ OAuth is handled by the auth routes module.
 """
 
 import logging
+import re
 import secrets
 from typing import Any
 
@@ -23,6 +24,13 @@ from ._install_ui import (
 from ._oauth import AdobeOAuthClient, TokenManager
 
 logger = logging.getLogger(__name__)
+
+# Constants for session configuration
+OAUTH_STATE_TTL = 600  # 10 minutes
+INSTALL_SESSION_TTL = 600  # 10 minutes
+
+# UUID v4 pattern for workspace ID validation
+WORKSPACE_ID_PATTERN = re.compile(r"^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$", re.IGNORECASE)
 
 
 async def _install_landing_page(request: Request) -> HTMLResponse:
@@ -53,11 +61,16 @@ async def _install_oauth_login(request: Request) -> RedirectResponse | HTMLRespo
     state = secrets.token_urlsafe(32)
 
     # Store state in storage backend with 10-minute TTL (600 seconds)
+    # Include IP and timestamp for additional security
+    from datetime import datetime
+
     state_data: dict[str, Any] = {
         "flow": "installation",  # Distinguish from regular auth flow
+        "timestamp": datetime.now().isoformat(),
+        "ip": request.client.host if request.client else None,
     }
     state_key = f"oauth_state:{state}"
-    await token_manager.storage.put(state_key, state_data, ttl=600)
+    await token_manager.storage.put(state_key, state_data, ttl=OAUTH_STATE_TTL)
 
     # Redirect to Adobe OAuth
     auth_url = oauth_client.get_authorization_url(state)
@@ -124,7 +137,7 @@ async def _install_workspace_selection(request: Request) -> HTMLResponse:
 
     # Update session with workspace data for later
     session_data["session_id"] = session_id  # Store for form submission
-    await token_manager.storage.put(session_key, session_data, ttl=600)
+    await token_manager.storage.put(session_key, session_data, ttl=INSTALL_SESSION_TTL)
 
     # Render selection page
     base_url: str = request.app.state.install_base_url
@@ -169,6 +182,15 @@ async def _install_process(request: Request) -> HTMLResponse:
     selected_workspace_ids = set(form_data.getlist("workspace_ids"))
     all_workspace_ids = form_data.get("all_workspace_ids", "").split(",")
     all_workspace_ids = [ws_id.strip() for ws_id in all_workspace_ids if ws_id.strip()]
+
+    # Validate workspace ID format (UUID v4)
+    for ws_id in list(selected_workspace_ids) + all_workspace_ids:
+        if not WORKSPACE_ID_PATTERN.match(ws_id):
+            logger.warning("Invalid workspace ID format received: %s", ws_id)
+            return HTMLResponse(
+                f"<h1>Error</h1><p>Invalid workspace ID format: {ws_id}</p>",
+                status_code=400,
+            )
 
     # Get current installations to determine what to uninstall
     current_installations = await install_manager.list_installations(user_id)

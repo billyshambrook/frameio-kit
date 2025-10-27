@@ -4,7 +4,9 @@ This module provides OAuth 2.0 endpoints for the authorization code flow,
 including login initiation and callback handling with CSRF protection.
 """
 
+import logging
 import secrets
+from datetime import datetime
 from typing import Any
 
 from starlette.requests import Request
@@ -12,6 +14,12 @@ from starlette.responses import HTMLResponse, RedirectResponse
 from starlette.routing import Route
 
 from ._oauth import AdobeOAuthClient, TokenManager
+
+logger = logging.getLogger(__name__)
+
+# Constants for session configuration
+OAUTH_STATE_TTL = 600  # 10 minutes
+INSTALL_SESSION_TTL = 600  # 10 minutes
 
 
 async def _login_endpoint(request: Request) -> RedirectResponse | HTMLResponse:
@@ -42,12 +50,15 @@ async def _login_endpoint(request: Request) -> RedirectResponse | HTMLResponse:
     state = secrets.token_urlsafe(32)
 
     # Store state in storage backend with 10-minute TTL (600 seconds)
+    # Include IP and timestamp for additional security
     state_data: dict[str, Any] = {
         "user_id": user_id,
         "interaction_id": interaction_id,
+        "timestamp": datetime.now().isoformat(),
+        "ip": request.client.host if request.client else None,
     }
     state_key = f"oauth_state:{state}"
-    await token_manager.storage.put(state_key, state_data, ttl=600)
+    await token_manager.storage.put(state_key, state_data, ttl=OAUTH_STATE_TTL)
 
     # Redirect to Adobe OAuth
     auth_url = oauth_client.get_authorization_url(state)
@@ -119,6 +130,19 @@ async def _callback_endpoint(request: Request) -> HTMLResponse | RedirectRespons
             status_code=400,
         )
 
+    # Validate IP matches (protection against token fixation attacks)
+    request_ip = request.client.host if request.client else None
+    state_ip = state_data.get("ip")
+    if state_ip and request_ip and state_ip != request_ip:
+        logger.warning(
+            "OAuth state token used from different IP: %s (state) vs %s (request). "
+            "Possible token fixation attack.",
+            state_ip,
+            request_ip,
+        )
+        # For now, log but continue - may reject in stricter security mode
+        # In production, consider rejecting based on security requirements
+
     # Delete state after retrieval (consume once)
     await token_manager.storage.delete(state_key)
 
@@ -149,7 +173,7 @@ async def _callback_endpoint(request: Request) -> HTMLResponse | RedirectRespons
                     "user_id": user_id,
                     "access_token": token_data.access_token,
                 },
-                ttl=600,  # 10 minutes
+                ttl=INSTALL_SESSION_TTL,
             )
 
             # Redirect to workspace selection
@@ -211,17 +235,15 @@ async def _callback_endpoint(request: Request) -> HTMLResponse | RedirectRespons
             """
         )
     except Exception as e:
-        import logging
-
-        logger = logging.getLogger(__name__)
         logger.error("OAuth callback error: %s", str(e), exc_info=True)
+        # Don't expose internal error details to users
         return HTMLResponse(
-            f"""
+            """
             <html>
             <head><title>Authentication Failed</title></head>
             <body>
                 <h1>❌ Authentication Failed</h1>
-                <p><strong>Error:</strong> {str(e)}</p>
+                <p>An unexpected error occurred during authentication.</p>
                 <p>Please close this window and try again.</p>
             </body>
             </html>

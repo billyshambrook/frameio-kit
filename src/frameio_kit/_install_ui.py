@@ -4,10 +4,23 @@ This module provides HTML rendering for the installation landing page,
 workspace selection, and result pages.
 """
 
+import html
 from typing import Any
 
 from ._install_models import InstallationRecord
 from ._manifest import AppManifest
+
+
+def escape_html(text: str) -> str:
+    """Escape HTML special characters to prevent XSS attacks.
+
+    Args:
+        text: Text to escape.
+
+    Returns:
+        HTML-safe escaped text.
+    """
+    return html.escape(text, quote=True)
 
 
 def render_install_page(manifest: AppManifest, base_url: str) -> str:
@@ -347,9 +360,12 @@ def render_workspace_selection(
         elif status == "update_available":
             status_badge = '<span class="status-badge status-update">↻ Update Available</span>'
 
+        workspace_name = escape_html(ws["name"])
+        workspace_id = escape_html(ws["id"])
+
         workspace_cards += f"""
-        <label class="workspace-card" for="ws_{ws["id"]}">
-            <input type="checkbox" name="workspace_ids" value="{ws["id"]}" id="ws_{ws["id"]}" {checked_attr}>
+        <label class="workspace-card" for="ws_{workspace_id}">
+            <input type="checkbox" name="workspace_ids" value="{workspace_id}" id="ws_{workspace_id}" {checked_attr}>
             <div class="workspace-card-content">
                 <div class="workspace-icon">
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -357,7 +373,7 @@ def render_workspace_selection(
                     </svg>
                 </div>
                 <div class="workspace-info">
-                    <div class="workspace-name">{ws["name"]}</div>
+                    <div class="workspace-name">{workspace_name}</div>
                     {status_badge}
                 </div>
                 <div class="checkmark">
