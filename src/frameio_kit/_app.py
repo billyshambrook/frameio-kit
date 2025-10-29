@@ -34,7 +34,7 @@ import functools
 import json
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import AsyncGenerator, Awaitable, Callable, cast
+from typing import TYPE_CHECKING, AsyncGenerator, Awaitable, Callable, cast
 
 from pydantic import ValidationError
 from starlette.applications import Starlette
@@ -52,6 +52,10 @@ from ._middleware import Middleware
 from ._oauth import AdobeOAuthClient, OAuthConfig, TokenManager
 from ._responses import AnyResponse, Form, Message
 from ._security import verify_signature
+
+if TYPE_CHECKING:
+    from ._install_manager import InstallationManager
+    from ._install_models import InstallationConfig
 
 # A handler for a standard webhook, which is non-interactive.
 # It can only return a Message or nothing.
@@ -88,7 +92,12 @@ class App:
     """
 
     def __init__(
-        self, *, token: str | None = None, middleware: list[Middleware] = [], oauth: OAuthConfig | None = None
+        self,
+        *,
+        token: str | None = None,
+        middleware: list[Middleware] = [],
+        oauth: OAuthConfig | None = None,
+        installation: "InstallationConfig | None" = None,
     ) -> None:
         """Initializes the FrameApp.
 
@@ -103,13 +112,22 @@ class App:
             oauth: Optional OAuth configuration for user authentication. When
                 provided, enables Adobe Login OAuth flow for actions that
                 require user-specific authentication.
+            installation: Optional installation configuration. When provided,
+                enables the app installation system with automatic custom action
+                and webhook creation.
         """
         self._token = token
         self._middleware = middleware or []
         self._oauth_config = oauth
+        self._installation_config = installation
         self._api_client: Client | None = None
         self._webhook_handlers: dict[str, _HandlerRegistration] = {}
         self._action_handlers: dict[str, _HandlerRegistration] = {}
+        self._installation_manager: "InstallationManager | None" = None
+
+        # Check if installation is enabled without OAuth
+        if self._installation_config and self._installation_config.enabled and not self._oauth_config:
+            raise RuntimeError("Installation requires OAuth configuration")
 
         # Initialize OAuth components if configured
         self._oauth_client: AdobeOAuthClient | None = None
@@ -136,6 +154,29 @@ class App:
                 oauth_client=self._oauth_client,
                 token_refresh_buffer_seconds=self._oauth_config.token_refresh_buffer_seconds,
             )
+
+            # Initialize installation manager if installation is enabled
+            if self._installation_config and self._installation_config.enabled:
+                from ._install_manager import InstallationManager
+                from ._manifest import AppManifest
+
+                # Generate manifest from registered handlers
+                manifest = AppManifest.from_app(
+                    app=self,
+                    app_name=self._installation_config.app_name,
+                    app_description=self._installation_config.app_description,
+                    base_url=self._oauth_config.base_url,
+                    icon_url=self._installation_config.app_icon_url,
+                    include_actions=self._installation_config.include_actions,
+                    include_webhooks=self._installation_config.include_webhooks,
+                )
+
+                self._installation_manager = InstallationManager(
+                    app=self,
+                    storage=storage,
+                    encryption=encryption,
+                    manifest=manifest,
+                )
 
         self._asgi_app = self._create_asgi_app()
 
@@ -195,6 +236,35 @@ class App:
         if not self._token_manager:
             raise RuntimeError("Cannot access token manager. OAuth not configured in App initialization.")
         return self._token_manager
+
+    @property
+    def installation_manager(self) -> "InstallationManager":
+        """Provides access to the installation manager.
+
+        This manager handles app installations across workspaces, including
+        creating custom actions and webhooks. Only available when installation
+        is enabled.
+
+        Example:
+            ```python
+            # List installations for a user
+            installations = await app.installation_manager.list_installations(user_id="user_123")
+
+            # Get installation for specific workspace
+            installation = await app.installation_manager.get_installation(workspace_id="ws_123")
+            ```
+
+        Returns:
+            The InstallationManager instance.
+
+        Raises:
+            RuntimeError: If installation was not configured during App initialization.
+        """
+        from ._install_manager import InstallationManager
+
+        if not self._installation_manager:
+            raise RuntimeError("Cannot access installation manager. Installation not configured in App initialization.")
+        return self._installation_manager
 
     def on_webhook(self, event_type: str | list[str], secret: str):
         """Decorator to register a function as a webhook event handler.
@@ -290,6 +360,11 @@ class App:
             app.state.token_manager = self._token_manager
             app.state.oauth_base_url = self._oauth_config.base_url
 
+        # Store installation manager in app state for route access
+        if self._installation_manager and self._oauth_config:
+            app.state.install_manager = self._installation_manager
+            app.state.install_base_url = self._oauth_config.base_url
+
         yield
 
         if self._api_client:
@@ -306,6 +381,13 @@ class App:
         if self._oauth_client and self._token_manager:
             auth_routes = create_auth_routes(self._token_manager, self._oauth_client)
             routes.extend(auth_routes)
+
+        # Add installation routes if configured
+        if self._installation_manager:
+            from ._install_routes import create_install_routes
+
+            install_routes = create_install_routes()
+            routes.extend(install_routes)
 
         return Starlette(
             debug=True,
@@ -396,7 +478,19 @@ class App:
         if not handler_reg:
             return Response(f"No handler registered for event type '{event_type}'.", status_code=404)
 
-        if not await verify_signature(request.headers, body, handler_reg.secret):
+        # Determine which secret to use for signature verification
+        # Priority: workspace-specific secret from installation > decorator secret
+        secret = handler_reg.secret
+        if self._installation_manager:
+            # Extract workspace_id from payload
+            workspace_id = payload.get("workspace", {}).get("id")
+            if workspace_id:
+                # Try to get workspace-specific secret
+                workspace_secret = await self._installation_manager.get_secret(workspace_id, event_type)
+                if workspace_secret:
+                    secret = workspace_secret
+
+        if not await verify_signature(request.headers, body, secret):
             return Response("Invalid signature.", status_code=401)
 
         # Extract timestamp from headers and add to payload
