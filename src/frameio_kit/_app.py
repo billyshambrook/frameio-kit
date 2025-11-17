@@ -21,7 +21,8 @@ Example:
     # Initialize the app, optionally with a token for API calls
     app = App(token=os.getenv("FRAMEIO_TOKEN"))
 
-    @app.on_webhook("file.ready", secret=os.getenv("WEBHOOK_SECRET"))
+    # WEBHOOK_SECRET env var will be used automatically
+    @app.on_webhook("file.ready")
     async def on_file_ready(event: WebhookEvent):
         print(f"File '{event.resource_id}' is now ready!")
 
@@ -32,6 +33,7 @@ Example:
 
 import functools
 import json
+import os
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import AsyncGenerator, Awaitable, Callable, cast
@@ -196,7 +198,7 @@ class App:
             raise RuntimeError("Cannot access token manager. OAuth not configured in App initialization.")
         return self._token_manager
 
-    def on_webhook(self, event_type: str | list[str], secret: str):
+    def on_webhook(self, event_type: str | list[str], secret: str | None = None):
         """Decorator to register a function as a webhook event handler.
 
         This decorator registers an asynchronous function to be called whenever
@@ -210,8 +212,15 @@ class App:
 
             app = App()
 
+            # Using explicit secret
             @app.on_webhook(event_type="file.ready", secret="your-secret")
             async def on_file_ready(event: WebhookEvent):
+                # Handle the event
+                pass
+
+            # Using WEBHOOK_SECRET environment variable
+            @app.on_webhook(event_type="file.ready")
+            async def on_another_event(event: WebhookEvent):
                 # Handle the event
                 pass
             ```
@@ -220,20 +229,43 @@ class App:
             event_type: The Frame.io event type to listen for (e.g.,
                 `"file.ready"`). You can also provide a list of strings to
                 register the same handler for multiple event types.
-            secret: The mandatory signing secret obtained from the Frame.io
-                Developer Console for this webhook. It is used to verify the
-                authenticity of incoming requests.
+            secret: The signing secret obtained from the Frame.io Developer
+                Console for this webhook. It is used to verify the authenticity
+                of incoming requests. If not provided, falls back to the
+                WEBHOOK_SECRET environment variable. Explicit parameter takes
+                precedence over the environment variable.
+
+        Raises:
+            ValueError: If neither secret parameter nor WEBHOOK_SECRET environment
+                variable is provided.
         """
 
         def decorator(func: WebhookHandlerFunc):
+            # Resolve secret with precedence: explicit parameter > env var
+            resolved_secret = secret or os.getenv("WEBHOOK_SECRET")
+            if not resolved_secret:
+                raise ValueError(
+                    "Webhook secret must be provided either via 'secret' parameter or WEBHOOK_SECRET environment variable"
+                )
+
             events = [event_type] if isinstance(event_type, str) else event_type
             for event in events:
-                self._webhook_handlers[event] = _HandlerRegistration(func=func, secret=secret, model=WebhookEvent)
+                self._webhook_handlers[event] = _HandlerRegistration(
+                    func=func, secret=resolved_secret, model=WebhookEvent
+                )
             return func
 
         return decorator
 
-    def on_action(self, event_type: str, name: str, description: str, secret: str, *, require_user_auth: bool = False):
+    def on_action(
+        self,
+        event_type: str,
+        name: str,
+        description: str,
+        secret: str | None = None,
+        *,
+        require_user_auth: bool = False,
+    ):
         """Decorator to register a function as a custom action handler.
 
         This decorator connects an asynchronous function to a Custom Action in the
@@ -246,8 +278,15 @@ class App:
 
             app = App()
 
+            # Using explicit secret
             @app.on_action(event_type="my_app.transcribe", name="Transcribe", description="Transcribe file", secret="your-secret")
             async def on_transcribe(event: ActionEvent):
+                # Handle the event
+                pass
+
+            # Using CUSTOM_ACTION_SECRET environment variable
+            @app.on_action(event_type="my_app.convert", name="Convert", description="Convert file")
+            async def on_convert(event: ActionEvent):
                 # Handle the event
                 pass
             ```
@@ -258,17 +297,31 @@ class App:
                 present in the incoming payload.
             name: The user-visible name for the action in the Frame.io UI menu.
             description: A short, user-visible description of what the action does.
-            secret: The mandatory signing secret generated when you create the
-                custom action in Frame.io.
+            secret: The signing secret generated when you create the custom action
+                in Frame.io. It is used to verify the authenticity of incoming
+                requests. If not provided, falls back to the CUSTOM_ACTION_SECRET
+                environment variable. Explicit parameter takes precedence over the
+                environment variable.
             require_user_auth: If True, requires user to authenticate via Adobe
                 Login OAuth before executing the handler. OAuth must be configured
                 in App initialization for this to work.
+
+        Raises:
+            ValueError: If neither secret parameter nor CUSTOM_ACTION_SECRET
+                environment variable is provided.
         """
 
         def decorator(func: ActionHandlerFunc):
+            # Resolve secret with precedence: explicit parameter > env var
+            resolved_secret = secret or os.getenv("CUSTOM_ACTION_SECRET")
+            if not resolved_secret:
+                raise ValueError(
+                    "Custom action secret must be provided either via 'secret' parameter or CUSTOM_ACTION_SECRET environment variable"
+                )
+
             self._action_handlers[event_type] = _HandlerRegistration(
                 func=func,
-                secret=secret,
+                secret=resolved_secret,
                 name=name,
                 description=description,
                 model=ActionEvent,

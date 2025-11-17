@@ -8,13 +8,20 @@ from frameio_kit import App, WebhookEvent, ActionEvent, Message
 
 app = App()
 
-@app.on_webhook("file.ready", secret=os.environ["WEBHOOK_SECRET"])
+# Single webhook - uses WEBHOOK_SECRET env var
+@app.on_webhook("file.ready")
 async def on_file_ready(event: WebhookEvent):
     print(f"File {event.resource_id} is ready!")
 
-@app.on_action("my_app.analyze", "Analyze File", "Analyze this file", os.environ["ACTION_SECRET"])
+# Single action - uses CUSTOM_ACTION_SECRET env var
+@app.on_action("my_app.analyze", "Analyze File", "Analyze this file")
 async def analyze_file(event: ActionEvent):
     return Message(title="Analysis Complete", description="File analyzed successfully!")
+
+# Multiple handlers with different secrets - pass explicit env vars
+@app.on_webhook("comment.created", secret=os.environ["WEBHOOK_COMMENTS"])
+async def on_comment(event: WebhookEvent):
+    print(f"New comment on {event.resource_id}")
 ```
 
 ## 🚀 Quick Start
@@ -46,6 +53,45 @@ uv add frameio-kit
 Or with pip:
 ```bash
 pip install frameio-kit
+```
+
+## 🔐 Environment Variables
+
+frameio-kit uses environment variables for secrets, keeping your code clean and secure:
+
+### Single Action/Webhook (Recommended)
+Use the default environment variables when you have **one webhook and one action**:
+
+```bash
+# .env file
+WEBHOOK_SECRET=your-webhook-secret-here
+CUSTOM_ACTION_SECRET=your-action-secret-here
+```
+
+```python
+# No secret parameter needed
+@app.on_webhook("file.ready")
+@app.on_action("my_app.process", "Process", "Process file")
+```
+
+### Multiple Actions/Webhooks (Different Secrets)
+When you have **multiple handlers with different secrets**, pass each secret explicitly:
+
+```bash
+# .env file
+WEBHOOK_FILES=secret-for-file-events
+WEBHOOK_COMMENTS=secret-for-comment-events
+CUSTOM_ACTION_ANALYZE=secret-for-analyze-action
+CUSTOM_ACTION_PUBLISH=secret-for-publish-action
+```
+
+```python
+import os
+
+@app.on_webhook("file.ready", secret=os.environ["WEBHOOK_FILES"])
+@app.on_webhook("comment.created", secret=os.environ["WEBHOOK_COMMENTS"])
+@app.on_action("my_app.analyze", "Analyze", "Analyze file", secret=os.environ["CUSTOM_ACTION_ANALYZE"])
+@app.on_action("my_app.publish", "Publish", "Publish file", secret=os.environ["CUSTOM_ACTION_PUBLISH"])
 ```
 
 ## 📚 Documentation

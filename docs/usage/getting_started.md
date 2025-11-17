@@ -40,17 +40,16 @@ pip install frameio-kit uvicorn
 Create a file named `main.py` with the following code:
 
 ```python
-import os
 from frameio_kit import App, ActionEvent, WebhookEvent, Message
 
 app = App()
 
 # Custom Action: Responds to user clicks in Frame.io
+# CUSTOM_ACTION_SECRET env var will be used automatically
 @app.on_action(
     event_type="greeting.say_hello",
     name="Say Hello",
-    description="A simple greeting action",
-    secret=os.environ["ACTION_SECRET"]
+    description="A simple greeting action"
 )
 async def on_greeting(event: ActionEvent):
     print(f"Hello from {event.user.id}!")
@@ -60,7 +59,8 @@ async def on_greeting(event: ActionEvent):
     )
 
 # Webhook: Responds to file events from Frame.io
-@app.on_webhook("file.ready", secret=os.environ["WEBHOOK_SECRET"])
+# WEBHOOK_SECRET env var will be used automatically
+@app.on_webhook("file.ready")
 async def on_file_ready(event: WebhookEvent):
     print(f"File {event.resource_id} is ready!")
 ```
@@ -71,6 +71,7 @@ async def on_file_ready(event: WebhookEvent):
 - **Webhook** - Listens for `file.ready` events and prints the file ID when files are processed
 - **`App()`** - Initializes your Frame.io integration
 - **`Message`** - Returned from the custom action handler to display a response in the Frame.io UI
+- **Environment Variables** - `CUSTOM_ACTION_SECRET` and `WEBHOOK_SECRET` are automatically loaded from environment
 
 Learn more about [Custom Actions](custom_actions.md) and [Webhooks](webhooks.md)
 
@@ -111,9 +112,18 @@ Copy the HTTPS forwarding URL (e.g., `https://abc123.ngrok-free.app`) – you'll
 Create a `.env` file with the secrets from Frame.io:
 
 ```bash
-ACTION_SECRET=your-action-secret-here
+CUSTOM_ACTION_SECRET=your-action-secret-here
 WEBHOOK_SECRET=your-webhook-secret-here
 ```
+
+!!! note
+    This example uses the default `CUSTOM_ACTION_SECRET` and `WEBHOOK_SECRET` environment variables, which is recommended when you have **one action and one webhook**.
+
+    If you have **multiple actions or webhooks with different secrets**, pass each secret explicitly via environment variables:
+    ```python
+    @app.on_webhook("file.ready", secret=os.environ["FILES_WEBHOOK_SECRET"])
+    @app.on_action("my_app.analyze", "Analyze", "Analyze file", secret=os.environ["ANALYZE_CUSTOM_ACTION_SECRET"])
+    ```
 
 ## Step 5: Run Your Application
 

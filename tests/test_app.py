@@ -376,3 +376,267 @@ async def test_missing_timestamp_header_returns_401(webhook_payload, sample_secr
         # verify_signature returns False when timestamp header is missing
         assert response.status_code == 401
         assert "Invalid signature" in response.text
+
+
+# --- Secret Defaulting Tests ---
+
+
+async def test_webhook_uses_env_var_when_no_explicit_secret(
+    webhook_payload, sample_secret, create_valid_signature, monkeypatch
+):
+    """Tests that on_webhook uses WEBHOOK_SECRET env var when secret parameter is not provided."""
+    # Set the environment variable
+    monkeypatch.setenv("WEBHOOK_SECRET", sample_secret)
+
+    call_log = []
+    app = App()
+
+    # No explicit secret provided - should use env var
+    @app.on_webhook("file.ready")
+    async def handler(event: WebhookEvent):
+        call_log.append(event)
+
+    body = json.dumps(webhook_payload).encode()
+    ts = int(time.time())
+    headers = {
+        "X-Frameio-Request-Timestamp": str(ts),
+        "X-Frameio-Signature": create_valid_signature(ts, body, sample_secret),
+    }
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/", content=body, headers=headers)
+        assert response.status_code == 200
+
+    assert len(call_log) == 1
+
+
+async def test_webhook_explicit_secret_takes_precedence_over_env_var(
+    webhook_payload, sample_secret, create_valid_signature, monkeypatch
+):
+    """Tests that explicit secret parameter takes precedence over WEBHOOK_SECRET env var."""
+    # Set a different secret in env var
+    monkeypatch.setenv("WEBHOOK_SECRET", "env_var_secret")
+
+    call_log = []
+    app = App()
+
+    # Explicit secret should be used, not env var
+    @app.on_webhook("file.ready", secret=sample_secret)
+    async def handler(event: WebhookEvent):
+        call_log.append(event)
+
+    body = json.dumps(webhook_payload).encode()
+    ts = int(time.time())
+    headers = {
+        "X-Frameio-Request-Timestamp": str(ts),
+        # Use the explicit secret for signature, not env var
+        "X-Frameio-Signature": create_valid_signature(ts, body, sample_secret),
+    }
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/", content=body, headers=headers)
+        assert response.status_code == 200
+
+    assert len(call_log) == 1
+
+
+def test_webhook_raises_error_when_no_secret_provided(monkeypatch):
+    """Tests that ValueError is raised when neither secret parameter nor env var is provided."""
+    # Ensure env var is not set
+    monkeypatch.delenv("WEBHOOK_SECRET", raising=False)
+
+    app = App()
+
+    # Should raise ValueError at decorator time
+    with pytest.raises(
+        ValueError,
+        match="Webhook secret must be provided either via 'secret' parameter or WEBHOOK_SECRET environment variable",
+    ):
+
+        @app.on_webhook("file.ready")
+        async def handler(event: WebhookEvent):
+            pass
+
+
+async def test_action_uses_env_var_when_no_explicit_secret(
+    action_payload, sample_secret, create_valid_signature, monkeypatch
+):
+    """Tests that on_action uses CUSTOM_ACTION_SECRET env var when secret parameter is not provided."""
+    # Set the environment variable
+    monkeypatch.setenv("CUSTOM_ACTION_SECRET", sample_secret)
+
+    call_log = []
+    app = App()
+
+    # No explicit secret provided - should use env var
+    @app.on_action("transcribe.file", name="Transcribe", description="Transcribe file")
+    async def handler(event: ActionEvent):
+        call_log.append(event)
+
+    body = json.dumps(action_payload).encode()
+    ts = int(time.time())
+    headers = {
+        "X-Frameio-Request-Timestamp": str(ts),
+        "X-Frameio-Signature": create_valid_signature(ts, body, sample_secret),
+    }
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/", content=body, headers=headers)
+        assert response.status_code == 200
+
+    assert len(call_log) == 1
+
+
+async def test_action_explicit_secret_takes_precedence_over_env_var(
+    action_payload, sample_secret, create_valid_signature, monkeypatch
+):
+    """Tests that explicit secret parameter takes precedence over CUSTOM_ACTION_SECRET env var."""
+    # Set a different secret in env var
+    monkeypatch.setenv("CUSTOM_ACTION_SECRET", "env_var_secret")
+
+    call_log = []
+    app = App()
+
+    # Explicit secret should be used, not env var
+    @app.on_action("transcribe.file", name="Transcribe", description="Transcribe file", secret=sample_secret)
+    async def handler(event: ActionEvent):
+        call_log.append(event)
+
+    body = json.dumps(action_payload).encode()
+    ts = int(time.time())
+    headers = {
+        "X-Frameio-Request-Timestamp": str(ts),
+        # Use the explicit secret for signature, not env var
+        "X-Frameio-Signature": create_valid_signature(ts, body, sample_secret),
+    }
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/", content=body, headers=headers)
+        assert response.status_code == 200
+
+    assert len(call_log) == 1
+
+
+def test_action_raises_error_when_no_secret_provided(monkeypatch):
+    """Tests that ValueError is raised when neither secret parameter nor env var is provided."""
+    # Ensure env var is not set
+    monkeypatch.delenv("CUSTOM_ACTION_SECRET", raising=False)
+
+    app = App()
+
+    # Should raise ValueError at decorator time
+    with pytest.raises(
+        ValueError,
+        match="Custom action secret must be provided either via 'secret' parameter or CUSTOM_ACTION_SECRET environment variable",
+    ):
+
+        @app.on_action("transcribe.file", name="Transcribe", description="Transcribe file")
+        async def handler(event: ActionEvent):
+            pass
+
+
+async def test_both_webhook_and_action_work_with_separate_env_vars(
+    webhook_payload, action_payload, sample_secret, create_valid_signature, monkeypatch
+):
+    """Tests that webhooks and actions can use their respective env vars simultaneously."""
+    webhook_secret = "webhook_secret_123"
+    action_secret = "action_secret_456"
+
+    monkeypatch.setenv("WEBHOOK_SECRET", webhook_secret)
+    monkeypatch.setenv("CUSTOM_ACTION_SECRET", action_secret)
+
+    call_log = []
+    app = App()
+
+    @app.on_webhook("file.ready")
+    async def webhook_handler(event: WebhookEvent):
+        call_log.append("webhook")
+
+    @app.on_action("transcribe.file", name="Transcribe", description="Transcribe file")
+    async def action_handler(event: ActionEvent):
+        call_log.append("action")
+
+    # Test webhook with webhook secret
+    body = json.dumps(webhook_payload).encode()
+    ts = int(time.time())
+    headers = {
+        "X-Frameio-Request-Timestamp": str(ts),
+        "X-Frameio-Signature": create_valid_signature(ts, body, webhook_secret),
+    }
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/", content=body, headers=headers)
+        assert response.status_code == 200
+
+    assert "webhook" in call_log
+
+    # Test action with action secret
+    body = json.dumps(action_payload).encode()
+    ts = int(time.time())
+    headers = {
+        "X-Frameio-Request-Timestamp": str(ts),
+        "X-Frameio-Signature": create_valid_signature(ts, body, action_secret),
+    }
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/", content=body, headers=headers)
+        assert response.status_code == 200
+
+    assert "action" in call_log
+    assert len(call_log) == 2
+
+
+async def test_webhook_empty_string_secret_falls_back_to_env_var(
+    webhook_payload, sample_secret, create_valid_signature, monkeypatch
+):
+    """Tests that empty string secret parameter falls back to WEBHOOK_SECRET env var."""
+    # Set the environment variable
+    monkeypatch.setenv("WEBHOOK_SECRET", sample_secret)
+
+    call_log = []
+    app = App()
+
+    # Empty string should be treated as falsy and fall back to env var
+    @app.on_webhook("file.ready", secret="")
+    async def handler(event: WebhookEvent):
+        call_log.append(event)
+
+    body = json.dumps(webhook_payload).encode()
+    ts = int(time.time())
+    headers = {
+        "X-Frameio-Request-Timestamp": str(ts),
+        "X-Frameio-Signature": create_valid_signature(ts, body, sample_secret),
+    }
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/", content=body, headers=headers)
+        assert response.status_code == 200
+
+    assert len(call_log) == 1
+
+
+async def test_action_empty_string_secret_falls_back_to_env_var(
+    action_payload, sample_secret, create_valid_signature, monkeypatch
+):
+    """Tests that empty string secret parameter falls back to CUSTOM_ACTION_SECRET env var."""
+    # Set the environment variable
+    monkeypatch.setenv("CUSTOM_ACTION_SECRET", sample_secret)
+
+    call_log = []
+    app = App()
+
+    # Empty string should be treated as falsy and fall back to env var
+    @app.on_action("transcribe.file", name="Transcribe", description="Transcribe file", secret="")
+    async def handler(event: ActionEvent):
+        call_log.append(event)
+
+    body = json.dumps(action_payload).encode()
+    ts = int(time.time())
+    headers = {
+        "X-Frameio-Request-Timestamp": str(ts),
+        "X-Frameio-Signature": create_valid_signature(ts, body, sample_secret),
+    }
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/", content=body, headers=headers)
+        assert response.status_code == 200
+
+    assert len(call_log) == 1
