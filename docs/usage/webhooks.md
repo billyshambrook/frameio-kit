@@ -27,16 +27,33 @@ Frame.io Event → HTTP POST → Your Handler
 Use the [`@app.on_webhook`](../api_reference.md#frameio_kit.App.on_webhook) decorator to register handlers:
 
 ```python
-@app.on_webhook(event_type="file.ready", secret="your-secret")
+import os
+
+# Single webhook - use default WEBHOOK_SECRET env var
+@app.on_webhook(event_type="file.ready")
 async def on_file_ready(event: WebhookEvent):
     # Handle the event
+    pass
+
+# Multiple webhooks with different secrets - use explicit env vars
+@app.on_webhook(event_type="file.ready", secret=os.environ["FILE_READY_WEBHOOK_SECRET"])
+async def on_file_ready(event: WebhookEvent):
+    pass
+
+@app.on_webhook(event_type="comment.created", secret=os.environ["COMMENTS_WEBHOOK_SECRET"])
+async def on_comment_created(event: WebhookEvent):
     pass
 ```
 
 ### Parameters
 
 - [`event_type`](../api_reference.md#frameio_kit.App.on_webhook\(event_type\)) *(str | list[str])*: The event name(s) to listen for
-- [`secret`](../api_reference.md#frameio_kit.App.on_webhook\(secret\)) *(str)*: The signing secret from Frame.io (required for security)
+- [`secret`](../api_reference.md#frameio_kit.App.on_webhook\(secret\)) *(str | None, optional)*: The signing secret from Frame.io. If not provided, falls back to the `WEBHOOK_SECRET` environment variable. Explicit parameter takes precedence over environment variable.
+
+!!! note "Environment Variables"
+    **Single webhook:** Use the default `WEBHOOK_SECRET` environment variable and omit the `secret` parameter.
+
+    **Multiple webhooks with different secrets:** Pass each secret explicitly via `secret=os.environ["WEBHOOK_NAME_WEBHOOK_SECRET"]` to keep secrets out of your code while supporting multiple webhook configurations.
 
 ## Webhook Event Object
 
@@ -58,18 +75,18 @@ async def handler(event: WebhookEvent):
 
 See [Webhook Event Subscriptions](https://developer.staging.frame.io/platform/docs/guides/webhooks#webhook-event-subscriptions) for the full list of event types.
 
-## Example 1: File Processing
+## Example 1: Single Webhook (Default Env Var)
 
 ```python
-import os
 from frameio_kit import App, WebhookEvent, Message
 
 app = App()
 
-@app.on_webhook("file.ready", secret=os.environ["WEBHOOK_SECRET"])
+# Single webhook - WEBHOOK_SECRET env var used automatically
+@app.on_webhook("file.ready")
 async def on_file_ready(event: WebhookEvent):
     print(f"File {event.resource_id} is ready for processing")
-    
+
     # Simulate some processing
     await process_file(event.resource_id)
 
@@ -78,22 +95,28 @@ async def process_file(file_id: str):
     pass
 ```
 
-## Example 2: Multiple Event Types
+## Example 2: Multiple Webhooks (Explicit Env Vars)
 
 ```python
+import os
 from frameio_kit import App, WebhookEvent
 
 app = App()
 
-@app.on_webhook(
-    event_type=["comment.created", "comment.updated"], 
-    secret=os.environ["WEBHOOK_SECRET"]
-)
-async def on_comment_change(event: WebhookEvent):
-    action = "created" if event.type == "comment.created" else "updated"
-    print(f"Comment {action}: {event.resource_id}")
-    
-    # Send notification to team
+# Multiple webhooks with different secrets - use explicit env vars
+@app.on_webhook(event_type="file.ready", secret=os.environ["FILE_READY_WEBHOOK_SECRET"])
+async def on_file_ready(event: WebhookEvent):
+    print(f"File ready: {event.resource_id}")
+    await process_file(event.resource_id)
+
+@app.on_webhook(event_type="comment.created", secret=os.environ["COMMENT_CREATED_WEBHOOK_SECRET"])
+async def on_comment_created(event: WebhookEvent):
+    print(f"New comment: {event.resource_id}")
+    await notify_team(event)
+
+@app.on_webhook(event_type="comment.updated", secret=os.environ["COMMENT_UPDATED_WEBHOOK_SECRET"])
+async def on_comment_updated(event: WebhookEvent):
+    print(f"Updated comment: {event.resource_id}")
     await notify_team(event)
 ```
 
@@ -106,7 +129,8 @@ from frameio_kit import App, WebhookEvent, Message
 
 app = App(token=os.getenv("FRAMEIO_TOKEN"))
 
-@app.on_webhook("file.ready", secret=os.environ["WEBHOOK_SECRET"])
+# Single webhook - use default WEBHOOK_SECRET
+@app.on_webhook("file.ready")
 async def add_processing_comment(event: WebhookEvent):
     # Use the API client to add a comment back to Frame.io
     await app.client.comments.create(
