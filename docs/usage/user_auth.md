@@ -125,6 +125,11 @@ app = App(
 
 Make sure to consider [mounting](mounting.md) when setting the `redirect_url`.
 
+> **Important:** If you mount your app at a subpath (e.g., `/frameio`), your `redirect_url` must include the mount path.  
+> For example, if your app is mounted at `/frameio`, set:  
+> `redirect_url="https://yourapp.com/frameio/auth/callback"`  
+> not  
+> `redirect_url="https://yourapp.com/auth/callback"`
 ### Complete Example
 
 ```python
