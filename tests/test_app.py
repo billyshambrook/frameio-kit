@@ -642,6 +642,186 @@ async def test_action_empty_string_secret_falls_back_to_env_var(
     assert len(call_log) == 1
 
 
+async def test_empty_string_secret_should_use_app_resolver_not_env_var(
+    webhook_payload, sample_secret, create_valid_signature, monkeypatch
+):
+    """Tests that empty string secret should follow precedence chain and use app resolver."""
+    # Ensure env var is NOT set - we want to prove app resolver is used
+    monkeypatch.delenv("WEBHOOK_SECRET", raising=False)
+
+    # Create app-level resolver
+    resolver = MockSecretResolver(webhook_secret=sample_secret, action_secret="unused")
+    call_log = []
+    app = App(secret_resolver=resolver)
+
+    # Empty string should follow precedence chain: app resolver before env var
+    @app.on_webhook("file.ready", secret="")
+    async def handler(event: WebhookEvent):
+        call_log.append(event)
+
+    body = json.dumps(webhook_payload).encode()
+    ts = int(time.time())
+    headers = {
+        "X-Frameio-Request-Timestamp": str(ts),
+        "X-Frameio-Signature": create_valid_signature(ts, body, sample_secret),
+    }
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/", content=body, headers=headers)
+        assert response.status_code == 200
+
+    # Verify handler was called
+    assert len(call_log) == 1
+    # Verify app-level resolver was used (this will FAIL with current bug)
+    assert len(resolver.webhook_call_log) == 1
+    assert resolver.webhook_call_log[0].type == "file.ready"
+
+
+async def test_empty_string_action_secret_should_use_app_resolver_not_env_var(
+    action_payload, sample_secret, create_valid_signature, monkeypatch
+):
+    """Tests that empty string secret should follow precedence chain for actions."""
+    # Ensure env var is NOT set - we want to prove app resolver is used
+    monkeypatch.delenv("CUSTOM_ACTION_SECRET", raising=False)
+
+    # Create app-level resolver
+    resolver = MockSecretResolver(webhook_secret="unused", action_secret=sample_secret)
+    call_log = []
+    app = App(secret_resolver=resolver)
+
+    # Empty string should follow precedence chain: app resolver before env var
+    @app.on_action("transcribe.file", name="Transcribe", description="Transcribe file", secret="")
+    async def handler(event: ActionEvent):
+        call_log.append(event)
+
+    body = json.dumps(action_payload).encode()
+    ts = int(time.time())
+    headers = {
+        "X-Frameio-Request-Timestamp": str(ts),
+        "X-Frameio-Signature": create_valid_signature(ts, body, sample_secret),
+    }
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/", content=body, headers=headers)
+        assert response.status_code == 200
+
+    # Verify handler was called
+    assert len(call_log) == 1
+    # Verify app-level resolver was used (this will FAIL with current bug)
+    assert len(resolver.action_call_log) == 1
+    assert resolver.action_call_log[0].type == "transcribe.file"
+
+
+async def test_empty_string_webhook_prefers_app_resolver_over_env_var(
+    webhook_payload, create_valid_signature, monkeypatch
+):
+    """Tests that when both app resolver and env var exist, empty string uses app resolver."""
+    env_var_secret = "env-var-secret"
+    app_resolver_secret = "app-resolver-secret"
+
+    # Set env var to one secret
+    monkeypatch.setenv("WEBHOOK_SECRET", env_var_secret)
+
+    # Create app-level resolver that returns a different secret
+    resolver = MockSecretResolver(webhook_secret=app_resolver_secret, action_secret="unused")
+    call_log = []
+    app = App(secret_resolver=resolver)
+
+    # Empty string should use app resolver, not env var
+    @app.on_webhook("file.ready", secret="")
+    async def handler(event: WebhookEvent):
+        call_log.append(event)
+
+    body = json.dumps(webhook_payload).encode()
+    ts = int(time.time())
+
+    # Sign with app resolver's secret (should succeed)
+    headers = {
+        "X-Frameio-Request-Timestamp": str(ts),
+        "X-Frameio-Signature": create_valid_signature(ts, body, app_resolver_secret),
+    }
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/", content=body, headers=headers)
+        assert response.status_code == 200
+
+    # Verify handler was called
+    assert len(call_log) == 1
+    # Verify app-level resolver was used, not env var
+    assert len(resolver.webhook_call_log) == 1
+
+    # Now verify that env var secret would NOT work (proving app resolver took precedence)
+    call_log.clear()
+    resolver.webhook_call_log.clear()
+
+    headers_with_env_secret = {
+        "X-Frameio-Request-Timestamp": str(ts),
+        "X-Frameio-Signature": create_valid_signature(ts, body, env_var_secret),
+    }
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/", content=body, headers=headers_with_env_secret)
+        assert response.status_code == 401  # Invalid signature
+
+    # Verify handler was NOT called
+    assert len(call_log) == 0
+
+
+async def test_empty_string_action_prefers_app_resolver_over_env_var(
+    action_payload, create_valid_signature, monkeypatch
+):
+    """Tests that when both app resolver and env var exist, empty string uses app resolver for actions."""
+    env_var_secret = "env-var-secret"
+    app_resolver_secret = "app-resolver-secret"
+
+    # Set env var to one secret
+    monkeypatch.setenv("CUSTOM_ACTION_SECRET", env_var_secret)
+
+    # Create app-level resolver that returns a different secret
+    resolver = MockSecretResolver(webhook_secret="unused", action_secret=app_resolver_secret)
+    call_log = []
+    app = App(secret_resolver=resolver)
+
+    # Empty string should use app resolver, not env var
+    @app.on_action("transcribe.file", name="Transcribe", description="Transcribe file", secret="")
+    async def handler(event: ActionEvent):
+        call_log.append(event)
+
+    body = json.dumps(action_payload).encode()
+    ts = int(time.time())
+
+    # Sign with app resolver's secret (should succeed)
+    headers = {
+        "X-Frameio-Request-Timestamp": str(ts),
+        "X-Frameio-Signature": create_valid_signature(ts, body, app_resolver_secret),
+    }
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/", content=body, headers=headers)
+        assert response.status_code == 200
+
+    # Verify handler was called
+    assert len(call_log) == 1
+    # Verify app-level resolver was used, not env var
+    assert len(resolver.action_call_log) == 1
+
+    # Now verify that env var secret would NOT work (proving app resolver took precedence)
+    call_log.clear()
+    resolver.action_call_log.clear()
+
+    headers_with_env_secret = {
+        "X-Frameio-Request-Timestamp": str(ts),
+        "X-Frameio-Signature": create_valid_signature(ts, body, env_var_secret),
+    }
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/", content=body, headers=headers_with_env_secret)
+        assert response.status_code == 401  # Invalid signature
+
+    # Verify handler was NOT called
+    assert len(call_log) == 0
+
+
 # --- Secret Resolver Tests ---
 
 

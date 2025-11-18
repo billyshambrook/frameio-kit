@@ -33,6 +33,7 @@ Example:
 
 import functools
 import json
+import logging
 import os
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -54,6 +55,8 @@ from ._middleware import Middleware
 from ._oauth import AdobeOAuthClient, OAuthConfig, TokenManager
 from ._responses import AnyResponse, Form, Message
 from ._security import verify_signature
+
+logger = logging.getLogger(__name__)
 
 # A handler for a standard webhook, which is non-interactive.
 # It can only return a Message or nothing.
@@ -260,6 +263,61 @@ class App:
             raise RuntimeError("Cannot access token manager. OAuth not configured in App initialization.")
         return self._token_manager
 
+    def _resolve_secret_at_decorator_time(
+        self,
+        secret: str | WebhookSecretResolver | ActionSecretResolver | None,
+        env_var_name: str,
+        handler_type: str,
+    ) -> tuple[str | None, WebhookSecretResolver | ActionSecretResolver | None]:
+        """Resolve secret configuration at decorator registration time.
+
+        Implements the precedence chain:
+        1. Explicit secret parameter (non-empty string or resolver callable)
+        2. App-level secret resolver (if configured)
+        3. Environment variable
+        4. Fail with ValueError
+
+        Args:
+            secret: Secret string, resolver callable, or None.
+            env_var_name: Name of environment variable to fall back to
+                (e.g., "WEBHOOK_SECRET").
+            handler_type: Type of handler for error messages
+                (e.g., "Webhook", "Custom action").
+
+        Returns:
+            Tuple of (static_secret, decorator_resolver):
+            - static_secret: String to use for signature verification, or None
+              if using a resolver.
+            - decorator_resolver: Callable resolver function, or None if using
+              static secret or app-level resolver.
+
+        Raises:
+            ValueError: If no secret source is available.
+        """
+        if secret is not None:
+            if isinstance(secret, str):
+                if secret:  # Non-empty string
+                    # Explicit static secret provided
+                    return (secret, None)
+                # Empty string falls through to app resolver / env var
+            else:
+                # Decorator-level resolver provided
+                return (None, secret)
+
+        # secret is None or empty string - check app resolver
+        if self._secret_resolver is not None:
+            # Use app-level resolver (resolved at request time in _handle_request)
+            return (None, None)
+        else:
+            # Fall back to environment variable
+            resolved_secret = os.getenv(env_var_name)
+            if not resolved_secret:
+                raise ValueError(
+                    f"{handler_type} secret must be provided either via 'secret' parameter, "
+                    f"app-level secret_resolver, or {env_var_name} environment variable"
+                )
+            return (resolved_secret, None)
+
     def on_webhook(self, event_type: str | list[str], secret: str | WebhookSecretResolver | None = None):
         """Decorator to register a function as a webhook event handler.
 
@@ -308,38 +366,7 @@ class App:
         """
 
         def decorator(func: WebhookHandlerFunc):
-            # Precedence: explicit secret > app resolver > env var
-            if secret is not None:
-                if isinstance(secret, str):
-                    # Static secret provided
-                    if not secret:  # Empty string check
-                        resolved_secret = os.getenv("WEBHOOK_SECRET")
-                        if not resolved_secret:
-                            raise ValueError(
-                                "Webhook secret must be provided either via 'secret' parameter or WEBHOOK_SECRET environment variable"
-                            )
-                        static_secret = resolved_secret
-                        resolver = None
-                    else:
-                        static_secret = secret
-                        resolver = None
-                else:
-                    # Callable resolver provided
-                    static_secret = None
-                    resolver = secret
-            elif self._secret_resolver is not None:
-                # Use app-level resolver
-                static_secret = None
-                resolver = None  # Will use app-level in _handle_request
-            else:
-                # Fall back to environment variable
-                resolved_secret = os.getenv("WEBHOOK_SECRET")
-                if not resolved_secret:
-                    raise ValueError(
-                        "Webhook secret must be provided either via 'secret' parameter, app-level secret_resolver, or WEBHOOK_SECRET environment variable"
-                    )
-                static_secret = resolved_secret
-                resolver = None
+            static_secret, resolver = self._resolve_secret_at_decorator_time(secret, "WEBHOOK_SECRET", "Webhook")
 
             events = [event_type] if isinstance(event_type, str) else event_type
             for event in events:
@@ -410,38 +437,9 @@ class App:
         """
 
         def decorator(func: ActionHandlerFunc):
-            # Precedence: explicit secret > app resolver > env var
-            if secret is not None:
-                if isinstance(secret, str):
-                    # Static secret provided
-                    if not secret:  # Empty string check
-                        resolved_secret = os.getenv("CUSTOM_ACTION_SECRET")
-                        if not resolved_secret:
-                            raise ValueError(
-                                "Custom action secret must be provided either via 'secret' parameter or CUSTOM_ACTION_SECRET environment variable"
-                            )
-                        static_secret = resolved_secret
-                        resolver = None
-                    else:
-                        static_secret = secret
-                        resolver = None
-                else:
-                    # Callable resolver provided
-                    static_secret = None
-                    resolver = secret
-            elif self._secret_resolver is not None:
-                # Use app-level resolver
-                static_secret = None
-                resolver = None  # Will use app-level in _handle_request
-            else:
-                # Fall back to environment variable
-                resolved_secret = os.getenv("CUSTOM_ACTION_SECRET")
-                if not resolved_secret:
-                    raise ValueError(
-                        "Custom action secret must be provided either via 'secret' parameter, app-level secret_resolver, or CUSTOM_ACTION_SECRET environment variable"
-                    )
-                static_secret = resolved_secret
-                resolver = None
+            static_secret, resolver = self._resolve_secret_at_decorator_time(
+                secret, "CUSTOM_ACTION_SECRET", "Custom action"
+            )
 
             self._action_handlers[event_type] = _HandlerRegistration(
                 func=func,
@@ -606,8 +604,8 @@ class App:
                     resolved_secret = await action_resolver(event)
                 else:
                     return Response("Unknown event type for secret resolution.", status_code=500)
-            except Exception as e:
-                print(f"Error resolving secret with decorator resolver: {e}")
+            except Exception:
+                logger.exception("Error resolving secret with decorator resolver")
                 return Response("Secret resolution failed.", status_code=500)
         elif self._secret_resolver:
             # App-level resolver
@@ -618,8 +616,8 @@ class App:
                     resolved_secret = await self._secret_resolver.get_action_secret(event)
                 else:
                     return Response("Unknown event type for secret resolution.", status_code=500)
-            except Exception as e:
-                print(f"Error resolving secret with app-level resolver: {e}")
+            except Exception:
+                logger.exception("Error resolving secret with app-level resolver")
                 return Response("Secret resolution failed.", status_code=500)
         else:
             # This should never happen due to decorator validation
@@ -657,8 +655,8 @@ class App:
         except RuntimeError as e:
             # OAuth configuration errors
             return Response(str(e), status_code=500)
-        except Exception as e:
-            print(f"Error processing event '{event_type}': {e}")
+        except Exception:
+            logger.exception(f"Error processing event '{event_type}'")
             return Response("Internal Server Error", status_code=500)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send):
