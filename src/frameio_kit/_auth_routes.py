@@ -129,9 +129,23 @@ async def _callback_endpoint(request: Request) -> HTMLResponse:
     # Delete state after retrieval (consume once)
     await token_manager.storage.delete(state_key)
 
-    user_id = state_data["user_id"]
-    redirect_url = state_data["redirect_url"]
+    user_id = state_data.get("user_id")
+    redirect_url = state_data.get("redirect_url")
 
+    if not user_id or not redirect_url:
+        return HTMLResponse(
+            """
+            <html>
+            <head><title>Invalid State Data</title></head>
+            <body>
+                <h1>❌ Invalid State Data</h1>
+                <p>The authentication state is incomplete or corrupted.</p>
+                <p>Please close this window and try again.</p>
+            </body>
+            </html>
+            """,
+            status_code=400,
+        )
     # Get shared OAuth client from app state
     oauth_client: AdobeOAuthClient = request.app.state.oauth_client
 
