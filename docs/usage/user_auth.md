@@ -40,7 +40,7 @@ app = App(
 
 !!! note "Automatic Redirect URL Inference"
 
-    By default, the OAuth callback URL is automatically inferred from incoming requests. For apps behind reverse proxies or load balancers, you may need to set `redirect_url` explicitly. See [Redirect URL Configuration](#redirect-url-configuration).
+    By default, the OAuth callback URL is automatically inferred from incoming requests. This inference relies on proper forwarding of headers (`X-Forwarded-Host`, `X-Forwarded-Proto`) from reverse proxies or load balancers. For such deployments, you may need to set `redirect_url` explicitly. See [Redirect URL Configuration](#redirect-url-configuration).
 
 !!! note "Token Storage"
 
