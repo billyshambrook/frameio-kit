@@ -52,7 +52,7 @@ from ._context import _user_token_context
 from ._encryption import TokenEncryption
 from ._events import ActionEvent, AnyEvent, WebhookEvent
 from ._middleware import Middleware
-from ._oauth import AdobeOAuthClient, OAuthConfig, TokenManager
+from ._oauth import OAuthConfig, TokenManager, infer_oauth_url
 from ._responses import AnyResponse, Form, Message
 from ._security import verify_signature
 
@@ -179,16 +179,9 @@ class App:
         self._action_handlers: dict[str, _HandlerRegistration] = {}
 
         # Initialize OAuth components if configured
-        self._oauth_client: AdobeOAuthClient | None = None
         self._token_manager: TokenManager | None = None
+        self._oauth_client: "AdobeOAuthClient | None" = None
         if self._oauth_config:
-            self._oauth_client = AdobeOAuthClient(
-                client_id=self._oauth_config.client_id,
-                client_secret=self._oauth_config.client_secret,
-                redirect_uri=self._oauth_config.redirect_uri,
-                scopes=self._oauth_config.scopes,
-                http_client=self._oauth_config.http_client,
-            )
             # Use provided storage or default to MemoryStore
             storage = self._oauth_config.storage
             if storage is None:
@@ -200,8 +193,21 @@ class App:
             self._token_manager = TokenManager(
                 storage=storage,
                 encryption=encryption,
-                oauth_client=self._oauth_client,
+                client_id=self._oauth_config.client_id,
+                client_secret=self._oauth_config.client_secret,
+                scopes=self._oauth_config.scopes,
+                http_client=self._oauth_config.http_client,
                 token_refresh_buffer_seconds=self._oauth_config.token_refresh_buffer_seconds,
+            )
+
+            # Create a shared OAuth client for auth routes to reuse
+            from ._oauth import AdobeOAuthClient
+
+            self._oauth_client = AdobeOAuthClient(
+                client_id=self._oauth_config.client_id,
+                client_secret=self._oauth_config.client_secret,
+                scopes=self._oauth_config.scopes,
+                http_client=self._oauth_config.http_client,
             )
 
         self._asgi_app = self._create_asgi_app()
@@ -461,10 +467,10 @@ class App:
             _ = self.client  # Initialize the client
 
         # Store OAuth components in app state for route access
-        if self._oauth_client and self._token_manager and self._oauth_config:
-            app.state.oauth_client = self._oauth_client
+        if self._token_manager and self._oauth_config:
             app.state.token_manager = self._token_manager
-            app.state.oauth_base_url = self._oauth_config.base_url
+            app.state.oauth_config = self._oauth_config
+            app.state.oauth_client = self._oauth_client
 
         yield
 
@@ -479,8 +485,8 @@ class App:
         routes = [Route("/", self._handle_request, methods=["POST"])]
 
         # Add OAuth routes if configured
-        if self._oauth_client and self._token_manager:
-            auth_routes = create_auth_routes(self._token_manager, self._oauth_client)
+        if self._token_manager:
+            auth_routes = create_auth_routes()
             routes.extend(auth_routes)
 
         return Starlette(
@@ -493,21 +499,25 @@ class App:
         """Finds the registered handler for a given event type."""
         return self._webhook_handlers.get(event_type) or self._action_handlers.get(event_type)
 
-    def _create_login_form(self, event: ActionEvent) -> Form:
+    def _create_login_form(self, event: ActionEvent, request: Request) -> Form:
         """Create a Form prompting the user to authenticate.
 
         Args:
             event: The ActionEvent that triggered the auth request.
+            request: The incoming request (used to infer login URL).
 
         Returns:
             A Form with a link to initiate the OAuth flow.
         """
         from ._responses import LinkField
 
-        # Build login URL with user context - include base_url for full URL
+        # Build login URL with user context
         assert self._oauth_config is not None, "OAuth config must be set to create login form"
-        base_url = self._oauth_config.base_url.rstrip("/")
-        login_url = f"{base_url}/auth/login?user_id={event.user_id}"
+
+        # Infer login URL from request (handles mount prefix correctly)
+        login_url_base = infer_oauth_url(request, "/auth/login")
+        login_url = f"{login_url_base}?user_id={event.user_id}"
+
         if event.interaction_id:
             login_url += f"&interaction_id={event.interaction_id}"
 
@@ -531,11 +541,12 @@ class App:
             wrapped = functools.partial(mw.__call__, next=wrapped)
         return wrapped
 
-    async def _check_user_auth(self, event: ActionEvent) -> Form | None:
+    async def _check_user_auth(self, event: ActionEvent, request: Request) -> Form | None:
         """Check if user is authenticated and return login form if not.
 
         Args:
             event: The ActionEvent to check authentication for.
+            request: The incoming request (used to infer login URL if needed).
 
         Returns:
             Login Form if user needs to authenticate, None if authenticated.
@@ -550,7 +561,7 @@ class App:
         user_token_data = await self._token_manager.get_token(event.user_id)
         if not user_token_data:
             # User not authenticated - return login form
-            return self._create_login_form(event)
+            return self._create_login_form(event, request)
 
         # Set user token in request context (not on event to prevent accidental logging)
         _user_token_context.set(user_token_data.access_token)
@@ -639,7 +650,7 @@ class App:
                     return Response("User authentication only supported for action events.", status_code=400)
 
                 # Check if user is authenticated
-                login_form = await self._check_user_auth(event)
+                login_form = await self._check_user_auth(event, request)
                 if login_form:
                     return JSONResponse(login_form.model_dump(exclude_none=True))
 
