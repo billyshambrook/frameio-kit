@@ -8,7 +8,15 @@ import pytest
 from key_value.aio.stores.memory import MemoryStore
 
 from frameio_kit._encryption import TokenEncryption
-from frameio_kit._oauth import AdobeOAuthClient, OAuthConfig, TokenData, TokenManager, TokenRefreshError
+from frameio_kit._oauth import (
+    AdobeOAuthClient,
+    OAuthConfig,
+    TokenData,
+    TokenManager,
+    TokenRefreshError,
+    get_oauth_redirect_url,
+    infer_oauth_url,
+)
 
 
 @pytest.fixture
@@ -508,3 +516,103 @@ class TestCustomHttpClient:
 
         # Clean up
         await custom_client.aclose()
+
+
+class TestOAuthHelperFunctions:
+    """Tests for OAuth URL helper functions."""
+
+    def test_infer_oauth_url_from_auth_login_root_mount(self):
+        """Test inferring OAuth URL from /auth/login with root mount."""
+        from starlette.datastructures import URL
+        from unittest.mock import Mock
+
+        # Mock request to /auth/login (root mount)
+        request = Mock()
+        request.url = URL("https://example.com/auth/login")
+
+        result = infer_oauth_url(request, "/auth/callback")
+        assert result == "https://example.com/auth/callback"
+
+    def test_infer_oauth_url_from_auth_login_prefix_mount(self):
+        """Test inferring OAuth URL from /auth/login with prefix mount."""
+        from starlette.datastructures import URL
+        from unittest.mock import Mock
+
+        # Mock request to /frameio/auth/login (prefix mount)
+        request = Mock()
+        request.url = URL("https://example.com/frameio/auth/login")
+
+        result = infer_oauth_url(request, "/auth/callback")
+        assert result == "https://example.com/frameio/auth/callback"
+
+    def test_infer_oauth_url_from_root_handler_no_mount(self):
+        """Test inferring OAuth URL from root handler with no mount."""
+        from starlette.datastructures import URL
+        from unittest.mock import Mock
+
+        # Mock request to / (root handler, no mount)
+        request = Mock()
+        request.url = URL("https://example.com/")
+
+        result = infer_oauth_url(request, "/auth/login")
+        assert result == "https://example.com/auth/login"
+
+    def test_infer_oauth_url_from_root_handler_with_mount(self):
+        """Test inferring OAuth URL from root handler with prefix mount."""
+        from starlette.datastructures import URL
+        from unittest.mock import Mock
+
+        # Mock request to /frameio/ (root handler, prefix mount)
+        request = Mock()
+        request.url = URL("https://example.com/frameio/")
+
+        result = infer_oauth_url(request, "/auth/login")
+        assert result == "https://example.com/frameio/auth/login"
+
+    def test_infer_oauth_url_from_callback(self):
+        """Test inferring OAuth URL from callback endpoint."""
+        from starlette.datastructures import URL
+        from unittest.mock import Mock
+
+        # Mock request to /auth/callback
+        request = Mock()
+        request.url = URL("https://example.com/auth/callback")
+
+        result = infer_oauth_url(request, "/auth/login")
+        assert result == "https://example.com/auth/login"
+
+    def test_get_oauth_redirect_url_with_explicit_config(self):
+        """Test get_oauth_redirect_url returns explicit config when set."""
+        from unittest.mock import Mock
+
+        oauth_config = OAuthConfig(
+            client_id="test_id",
+            client_secret="test_secret",
+            redirect_url="https://configured.example.com/auth/callback",
+        )
+
+        # Request doesn't matter when explicit config is set
+        request = Mock()
+        request.url.scheme = "https"
+        request.url.netloc = "different.example.com"
+        request.url.path = "/auth/login"
+
+        result = get_oauth_redirect_url(oauth_config, request)
+        assert result == "https://configured.example.com/auth/callback"
+
+    def test_get_oauth_redirect_url_infers_when_not_configured(self):
+        """Test get_oauth_redirect_url infers from request when not configured."""
+        from starlette.datastructures import URL
+        from unittest.mock import Mock
+
+        oauth_config = OAuthConfig(
+            client_id="test_id",
+            client_secret="test_secret",
+            redirect_url=None,
+        )
+
+        request = Mock()
+        request.url = URL("https://example.com/frameio/auth/login")
+
+        result = get_oauth_redirect_url(oauth_config, request)
+        assert result == "https://example.com/frameio/auth/callback"

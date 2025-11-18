@@ -45,11 +45,24 @@ def token_manager() -> TokenManager:
 
 
 @pytest.fixture
-def test_app(oauth_config: OAuthConfig, token_manager: TokenManager) -> Starlette:
+def oauth_client(oauth_config: OAuthConfig):
+    """Create test OAuth client."""
+    from frameio_kit._oauth import AdobeOAuthClient
+
+    return AdobeOAuthClient(
+        client_id=oauth_config.client_id,
+        client_secret=oauth_config.client_secret,
+        scopes=oauth_config.scopes,
+    )
+
+
+@pytest.fixture
+def test_app(oauth_config: OAuthConfig, token_manager: TokenManager, oauth_client) -> Starlette:
     """Create test Starlette app with auth routes."""
     app = Starlette()
     app.state.oauth_config = oauth_config
     app.state.token_manager = token_manager
+    app.state.oauth_client = oauth_client
 
     # Add auth routes
     auth_routes = create_auth_routes()
@@ -139,10 +152,16 @@ class TestLoginEndpoint:
         self, oauth_config_no_redirect: OAuthConfig, token_manager: TokenManager
     ):
         """Test redirect URL inference for app mounted at root."""
+        from frameio_kit._oauth import AdobeOAuthClient
+
         # Create app without explicit redirect_url
         app = Starlette()
         app.state.oauth_config = oauth_config_no_redirect
         app.state.token_manager = token_manager
+        app.state.oauth_client = AdobeOAuthClient(
+            client_id=oauth_config_no_redirect.client_id,
+            client_secret=oauth_config_no_redirect.client_secret,
+        )
         auth_routes = create_auth_routes()
         app.routes.extend(auth_routes)
 
@@ -164,11 +183,17 @@ class TestLoginEndpoint:
         self, oauth_config_no_redirect: OAuthConfig, token_manager: TokenManager
     ):
         """Test redirect URL inference for app mounted at prefix."""
+        from frameio_kit._oauth import AdobeOAuthClient
+
         # Create main app and mount our auth app at /frameio
         main_app = Starlette()
         sub_app = Starlette()
         sub_app.state.oauth_config = oauth_config_no_redirect
         sub_app.state.token_manager = token_manager
+        sub_app.state.oauth_client = AdobeOAuthClient(
+            client_id=oauth_config_no_redirect.client_id,
+            client_secret=oauth_config_no_redirect.client_secret,
+        )
         auth_routes = create_auth_routes()
         sub_app.routes.extend(auth_routes)
 
@@ -276,6 +301,8 @@ class TestCallbackEndpoint:
 
     async def test_callback_uses_stored_redirect_url(self, token_manager: TokenManager):
         """Test that callback creates OAuth client with redirect URL from state."""
+        from frameio_kit._oauth import AdobeOAuthClient
+
         # Create app without explicit redirect_url
         oauth_config_no_redirect = OAuthConfig(
             client_id="test_client_id",
@@ -286,6 +313,10 @@ class TestCallbackEndpoint:
         app = Starlette()
         app.state.oauth_config = oauth_config_no_redirect
         app.state.token_manager = token_manager
+        app.state.oauth_client = AdobeOAuthClient(
+            client_id=oauth_config_no_redirect.client_id,
+            client_secret=oauth_config_no_redirect.client_secret,
+        )
         auth_routes = create_auth_routes()
         app.routes.extend(auth_routes)
 

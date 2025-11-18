@@ -11,7 +11,7 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse
 from starlette.routing import Route
 
-from ._oauth import AdobeOAuthClient, TokenManager
+from ._oauth import AdobeOAuthClient, TokenManager, get_oauth_redirect_url
 
 
 async def _login_endpoint(request: Request) -> RedirectResponse | HTMLResponse:
@@ -40,23 +40,11 @@ async def _login_endpoint(request: Request) -> RedirectResponse | HTMLResponse:
             status_code=400,
         )
 
-    # Determine redirect URL - use explicit config or infer from request
-    if oauth_config.redirect_url:
-        redirect_url = oauth_config.redirect_url
-    else:
-        # Infer redirect URL from request
-        base = f"{request.url.scheme}://{request.url.netloc}"
-        # Extract mount prefix by removing /auth/login from the path
-        mount_prefix = request.url.path.removesuffix("/auth/login")
-        redirect_url = f"{base}{mount_prefix}/auth/callback"
+    # Get redirect URL - use explicit config or infer from request
+    redirect_url = get_oauth_redirect_url(oauth_config, request)
 
-    # Create OAuth client
-    oauth_client = AdobeOAuthClient(
-        client_id=oauth_config.client_id,
-        client_secret=oauth_config.client_secret,
-        scopes=oauth_config.scopes,
-        http_client=oauth_config.http_client,
-    )
+    # Get shared OAuth client from app state
+    oauth_client: AdobeOAuthClient = request.app.state.oauth_client
 
     # Generate CSRF state token
     state = secrets.token_urlsafe(32)
@@ -87,11 +75,8 @@ async def _callback_endpoint(request: Request) -> HTMLResponse:
     Returns:
         HTML page with success or error message.
     """
-    from ._oauth import OAuthConfig
-
-    # Get token manager and oauth config from app state
+    # Get token manager from app state
     token_manager: TokenManager = request.app.state.token_manager
-    oauth_config: OAuthConfig = request.app.state.oauth_config
 
     code = request.query_params.get("code")
     state = request.query_params.get("state")
@@ -147,13 +132,8 @@ async def _callback_endpoint(request: Request) -> HTMLResponse:
     user_id = state_data["user_id"]
     redirect_url = state_data["redirect_url"]
 
-    # Create OAuth client
-    oauth_client = AdobeOAuthClient(
-        client_id=oauth_config.client_id,
-        client_secret=oauth_config.client_secret,
-        scopes=oauth_config.scopes,
-        http_client=oauth_config.http_client,
-    )
+    # Get shared OAuth client from app state
+    oauth_client: AdobeOAuthClient = request.app.state.oauth_client
 
     try:
         # Exchange code for tokens using the same redirect URL

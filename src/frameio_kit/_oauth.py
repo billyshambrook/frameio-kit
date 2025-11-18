@@ -528,3 +528,58 @@ class TokenManager:
         new_token = await oauth_client.refresh_token(old_token.refresh_token)
         new_token.user_id = old_token.user_id
         return new_token
+
+
+def infer_oauth_url(request, path: str) -> str:
+    """Infer an OAuth URL from an incoming request.
+
+    Extracts the base URL (scheme + netloc) and mount prefix from the request,
+    then constructs the specified OAuth path.
+
+    Args:
+        request: Starlette Request object.
+        path: The OAuth path to construct (e.g., "/auth/login", "/auth/callback").
+
+    Returns:
+        Full URL to the OAuth endpoint.
+
+    Example:
+        # App mounted at root, request to /auth/login
+        infer_oauth_url(request, "/auth/callback") -> "https://example.com/auth/callback"
+
+        # App mounted at /frameio, request to /frameio/auth/login
+        infer_oauth_url(request, "/auth/callback") -> "https://example.com/frameio/auth/callback"
+
+        # App mounted at /frameio, request to /frameio/ (main handler)
+        infer_oauth_url(request, "/auth/login") -> "https://example.com/frameio/auth/login"
+    """
+    base = f"{request.url.scheme}://{request.url.netloc}"
+    current_path = str(request.url.path)
+
+    # Extract mount prefix by removing known OAuth paths or trailing slash
+    if current_path.endswith("/auth/login"):
+        mount_prefix = current_path.removesuffix("/auth/login")
+    elif current_path.endswith("/auth/callback"):
+        mount_prefix = current_path.removesuffix("/auth/callback")
+    elif current_path.endswith("/"):
+        mount_prefix = current_path.rstrip("/")
+    else:
+        # Unknown path, assume root mount
+        mount_prefix = ""
+
+    return f"{base}{mount_prefix}{path}"
+
+
+def get_oauth_redirect_url(oauth_config: OAuthConfig, request) -> str:
+    """Get the OAuth redirect URL, using explicit config or inferring from request.
+
+    Args:
+        oauth_config: OAuth configuration.
+        request: Starlette Request object.
+
+    Returns:
+        Full URL to the OAuth callback endpoint.
+    """
+    if oauth_config.redirect_url:
+        return oauth_config.redirect_url
+    return infer_oauth_url(request, "/auth/callback")

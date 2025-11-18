@@ -52,7 +52,7 @@ from ._context import _user_token_context
 from ._encryption import TokenEncryption
 from ._events import ActionEvent, AnyEvent, WebhookEvent
 from ._middleware import Middleware
-from ._oauth import OAuthConfig, TokenManager
+from ._oauth import OAuthConfig, TokenManager, infer_oauth_url
 from ._responses import AnyResponse, Form, Message
 from ._security import verify_signature
 
@@ -180,6 +180,7 @@ class App:
 
         # Initialize OAuth components if configured
         self._token_manager: TokenManager | None = None
+        self._oauth_client: "AdobeOAuthClient | None" = None
         if self._oauth_config:
             # Use provided storage or default to MemoryStore
             storage = self._oauth_config.storage
@@ -197,6 +198,16 @@ class App:
                 scopes=self._oauth_config.scopes,
                 http_client=self._oauth_config.http_client,
                 token_refresh_buffer_seconds=self._oauth_config.token_refresh_buffer_seconds,
+            )
+
+            # Create a shared OAuth client for auth routes to reuse
+            from ._oauth import AdobeOAuthClient
+
+            self._oauth_client = AdobeOAuthClient(
+                client_id=self._oauth_config.client_id,
+                client_secret=self._oauth_config.client_secret,
+                scopes=self._oauth_config.scopes,
+                http_client=self._oauth_config.http_client,
             )
 
         self._asgi_app = self._create_asgi_app()
@@ -459,11 +470,15 @@ class App:
         if self._token_manager and self._oauth_config:
             app.state.token_manager = self._token_manager
             app.state.oauth_config = self._oauth_config
+            app.state.oauth_client = self._oauth_client
 
         yield
 
         if self._api_client:
             await self._api_client.close()
+
+        if self._oauth_client:
+            await self._oauth_client.close()
 
     def _create_asgi_app(self) -> Starlette:
         """Builds the Starlette ASGI application with routes and lifecycle hooks."""
@@ -499,17 +514,9 @@ class App:
         # Build login URL with user context
         assert self._oauth_config is not None, "OAuth config must be set to create login form"
 
-        # Use explicit redirect_url if configured, otherwise infer from request
-        if self._oauth_config.redirect_url:
-            # Extract base from explicit redirect_url (remove /auth/callback)
-            base_url = self._oauth_config.redirect_url.removesuffix("/auth/callback")
-            login_url = f"{base_url}/auth/login?user_id={event.user_id}"
-        else:
-            # Infer from request
-            base = f"{request.url.scheme}://{request.url.netloc}"
-            # Request path will be "/" for the main handler
-            # Auth routes are at /auth/login and /auth/callback
-            login_url = f"{base}/auth/login?user_id={event.user_id}"
+        # Infer login URL from request (handles mount prefix correctly)
+        login_url_base = infer_oauth_url(request, "/auth/login")
+        login_url = f"{login_url_base}?user_id={event.user_id}"
 
         if event.interaction_id:
             login_url += f"&interaction_id={event.interaction_id}"
