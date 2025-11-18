@@ -795,9 +795,6 @@ async def test_static_secret_takes_precedence_over_resolvers(webhook_payload, sa
     """Tests that static secret takes precedence over both decorator and app-level resolvers."""
     resolver = MockSecretResolver(webhook_secret="wrong_secret", action_secret="wrong_secret")
 
-    async def webhook_resolver(event: WebhookEvent) -> str:
-        return "wrong_secret"
-
     call_log = []
     app = App(secret_resolver=resolver)
 
