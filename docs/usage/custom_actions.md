@@ -250,6 +250,67 @@ async def schedule_review(event: ActionEvent):
     )
 ```
 
+## Dynamic Secret Resolution
+
+When you need to resolve action secrets dynamically (e.g., from a database for multi-tenant applications), use secret resolvers.
+
+### Decorator-Level Resolver
+
+Provide an async function that receives the [`ActionEvent`](../api_reference.md#frameio_kit.ActionEvent) and returns the secret:
+
+```python
+from frameio_kit import App, ActionEvent, Message
+
+app = App()
+
+async def resolve_action_secret(event: ActionEvent) -> str:
+    """Resolve secret based on account ID or resource."""
+    return await db.get_action_secret(account_id=event.account_id)
+
+# Use the resolver for this specific action
+@app.on_action(
+    event_type="my_app.process",
+    name="Process File",
+    description="Process this file",
+    secret=resolve_action_secret
+)
+async def process_file(event: ActionEvent):
+    return Message(title="Processing", description="File is being processed")
+```
+
+### App-Level Resolver
+
+For centralized secret management across all actions, use the app-level resolver. See [App Configuration](app.md#dynamic-secret-resolution) for details:
+
+```python
+from frameio_kit import App, SecretResolver, WebhookEvent, ActionEvent
+
+class MySecretResolver:
+    async def get_webhook_secret(self, event: WebhookEvent) -> str:
+        return await db.get_webhook_secret(event.account_id)
+
+    async def get_action_secret(self, event: ActionEvent) -> str:
+        return await db.get_action_secret(event.account_id)
+
+app = App(secret_resolver=MySecretResolver())
+
+# All actions use the app-level resolver by default
+@app.on_action(
+    event_type="my_app.process",
+    name="Process File",
+    description="Process this file"
+)
+async def process_file(event: ActionEvent):
+    return Message(title="Processing", description="File is being processed")
+```
+
+### Secret Resolution Precedence
+
+1. Explicit string secret (`secret="..."`)
+2. Decorator-level resolver (`secret=my_resolver`)
+3. App-level resolver (`App(secret_resolver=...)`)
+4. Environment variable (`CUSTOM_ACTION_SECRET`)
+
 ## Setting Up Custom Actions in Frame.io
 
 1. **Go to Workspace Settings** in Frame.io

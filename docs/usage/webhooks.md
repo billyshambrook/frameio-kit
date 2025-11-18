@@ -140,6 +140,58 @@ async def add_processing_comment(event: WebhookEvent):
     )
 ```
 
+## Dynamic Secret Resolution
+
+When you need to resolve webhook secrets dynamically (e.g., from a database for multi-tenant applications), use secret resolvers.
+
+### Decorator-Level Resolver
+
+Provide an async function that receives the [`WebhookEvent`](../api_reference.md#frameio_kit.WebhookEvent) and returns the secret:
+
+```python
+from frameio_kit import App, WebhookEvent
+
+app = App()
+
+async def resolve_webhook_secret(event: WebhookEvent) -> str:
+    """Resolve secret based on account ID."""
+    return await db.get_webhook_secret(account_id=event.account_id)
+
+# Use the resolver for this specific webhook
+@app.on_webhook("file.ready", secret=resolve_webhook_secret)
+async def on_file_ready(event: WebhookEvent):
+    print(f"File {event.resource_id} is ready")
+```
+
+### App-Level Resolver
+
+For centralized secret management across all webhooks, use the app-level resolver. See [App Configuration](app.md#dynamic-secret-resolution) for details:
+
+```python
+from frameio_kit import App, SecretResolver, WebhookEvent, ActionEvent
+
+class MySecretResolver:
+    async def get_webhook_secret(self, event: WebhookEvent) -> str:
+        return await db.get_webhook_secret(event.account_id)
+
+    async def get_action_secret(self, event: ActionEvent) -> str:
+        return await db.get_action_secret(event.account_id)
+
+app = App(secret_resolver=MySecretResolver())
+
+# All webhooks use the app-level resolver by default
+@app.on_webhook("file.ready")
+async def on_file_ready(event: WebhookEvent):
+    pass
+```
+
+### Secret Resolution Precedence
+
+1. Explicit string secret (`secret="..."`)
+2. Decorator-level resolver (`secret=my_resolver`)
+3. App-level resolver (`App(secret_resolver=...)`)
+4. Environment variable (`WEBHOOK_SECRET`)
+
 ## Setting Up Webhooks in Frame.io
 
 See [Webhook Tutorial](https://developer.staging.frame.io/platform/docs/guides/webhooks#webhook-tutorial) for instructions on how to set up webhooks in Frame.io.
