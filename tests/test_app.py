@@ -357,8 +357,8 @@ async def test_timestamp_exposed_on_action_event(action_payload, sample_secret, 
     assert event.timestamp == ts
 
 
-async def test_missing_timestamp_header_returns_401(webhook_payload, sample_secret):
-    """Tests that a 401 is returned when the X-Frameio-Request-Timestamp header is missing."""
+async def test_missing_timestamp_header_returns_400(webhook_payload, sample_secret):
+    """Tests that a 400 is returned when the X-Frameio-Request-Timestamp header is missing."""
     app = App()
 
     @app.on_webhook("file.ready", secret=sample_secret)
@@ -366,16 +366,16 @@ async def test_missing_timestamp_header_returns_401(webhook_payload, sample_secr
         pass
 
     body = json.dumps(webhook_payload).encode()
-    # No timestamp header provided - signature verification will fail
+    # No timestamp header provided - will fail when trying to parse event
     headers = {
         "X-Frameio-Signature": "v0=dummy_signature",
     }
 
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
         response = await client.post("/", content=body, headers=headers)
-        # verify_signature returns False when timestamp header is missing
-        assert response.status_code == 401
-        assert "Invalid signature" in response.text
+        # Now returns 400 because timestamp header is required for event parsing
+        assert response.status_code == 400
+        assert "Missing or invalid X-Frameio-Request-Timestamp header" in response.text
 
 
 # --- Secret Defaulting Tests ---
@@ -450,7 +450,7 @@ def test_webhook_raises_error_when_no_secret_provided(monkeypatch):
     # Should raise ValueError at decorator time
     with pytest.raises(
         ValueError,
-        match="Webhook secret must be provided either via 'secret' parameter or WEBHOOK_SECRET environment variable",
+        match="Webhook secret must be provided either via 'secret' parameter, app-level secret_resolver, or WEBHOOK_SECRET environment variable",
     ):
 
         @app.on_webhook("file.ready")
@@ -527,7 +527,7 @@ def test_action_raises_error_when_no_secret_provided(monkeypatch):
     # Should raise ValueError at decorator time
     with pytest.raises(
         ValueError,
-        match="Custom action secret must be provided either via 'secret' parameter or CUSTOM_ACTION_SECRET environment variable",
+        match="Custom action secret must be provided either via 'secret' parameter, app-level secret_resolver, or CUSTOM_ACTION_SECRET environment variable",
     ):
 
         @app.on_action("transcribe.file", name="Transcribe", description="Transcribe file")
@@ -640,3 +640,368 @@ async def test_action_empty_string_secret_falls_back_to_env_var(
         assert response.status_code == 200
 
     assert len(call_log) == 1
+
+
+# --- Secret Resolver Tests ---
+
+
+class MockSecretResolver:
+    """App-level resolver implementing the SecretResolver protocol for testing."""
+
+    def __init__(self, webhook_secret: str, action_secret: str):
+        self.webhook_secret = webhook_secret
+        self.action_secret = action_secret
+        self.webhook_call_log: list[WebhookEvent] = []
+        self.action_call_log: list[ActionEvent] = []
+
+    async def get_webhook_secret(self, event: WebhookEvent) -> str:
+        self.webhook_call_log.append(event)
+        return self.webhook_secret
+
+    async def get_action_secret(self, event: ActionEvent) -> str:
+        self.action_call_log.append(event)
+        return self.action_secret
+
+
+async def test_app_level_resolver_for_webhooks(webhook_payload, sample_secret, create_valid_signature):
+    """Tests that app-level resolver is called for webhook events."""
+    resolver = MockSecretResolver(webhook_secret=sample_secret, action_secret="unused")
+    call_log = []
+    app = App(secret_resolver=resolver)
+
+    # No explicit secret - should use app-level resolver
+    @app.on_webhook("file.ready")
+    async def handler(event: WebhookEvent):
+        call_log.append(event)
+
+    body = json.dumps(webhook_payload).encode()
+    ts = int(time.time())
+    headers = {
+        "X-Frameio-Request-Timestamp": str(ts),
+        "X-Frameio-Signature": create_valid_signature(ts, body, sample_secret),
+    }
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/", content=body, headers=headers)
+        assert response.status_code == 200
+
+    # Verify handler was called
+    assert len(call_log) == 1
+    # Verify resolver was called with correct event
+    assert len(resolver.webhook_call_log) == 1
+    assert resolver.webhook_call_log[0].type == "file.ready"
+    assert len(resolver.action_call_log) == 0
+
+
+async def test_app_level_resolver_for_actions(action_payload, sample_secret, create_valid_signature):
+    """Tests that app-level resolver is called for action events."""
+    resolver = MockSecretResolver(webhook_secret="unused", action_secret=sample_secret)
+    call_log = []
+    app = App(secret_resolver=resolver)
+
+    # No explicit secret - should use app-level resolver
+    @app.on_action("transcribe.file", name="Transcribe", description="Transcribe file")
+    async def handler(event: ActionEvent):
+        call_log.append(event)
+
+    body = json.dumps(action_payload).encode()
+    ts = int(time.time())
+    headers = {
+        "X-Frameio-Request-Timestamp": str(ts),
+        "X-Frameio-Signature": create_valid_signature(ts, body, sample_secret),
+    }
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/", content=body, headers=headers)
+        assert response.status_code == 200
+
+    # Verify handler was called
+    assert len(call_log) == 1
+    # Verify resolver was called with correct event
+    assert len(resolver.action_call_log) == 1
+    assert resolver.action_call_log[0].type == "transcribe.file"
+    assert len(resolver.webhook_call_log) == 0
+
+
+async def test_decorator_level_webhook_resolver(webhook_payload, sample_secret, create_valid_signature):
+    """Tests that decorator-level resolver is called for webhook events."""
+    resolver_call_log: list[WebhookEvent] = []
+
+    async def webhook_resolver(event: WebhookEvent) -> str:
+        resolver_call_log.append(event)
+        return sample_secret
+
+    call_log = []
+    app = App()
+
+    # Use decorator-level resolver
+    @app.on_webhook("file.ready", secret=webhook_resolver)
+    async def handler(event: WebhookEvent):
+        call_log.append(event)
+
+    body = json.dumps(webhook_payload).encode()
+    ts = int(time.time())
+    headers = {
+        "X-Frameio-Request-Timestamp": str(ts),
+        "X-Frameio-Signature": create_valid_signature(ts, body, sample_secret),
+    }
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/", content=body, headers=headers)
+        assert response.status_code == 200
+
+    # Verify handler was called
+    assert len(call_log) == 1
+    # Verify resolver was called with correct event
+    assert len(resolver_call_log) == 1
+    assert resolver_call_log[0].type == "file.ready"
+
+
+async def test_decorator_level_action_resolver(action_payload, sample_secret, create_valid_signature):
+    """Tests that decorator-level resolver is called for action events."""
+    resolver_call_log: list[ActionEvent] = []
+
+    async def action_resolver(event: ActionEvent) -> str:
+        resolver_call_log.append(event)
+        return sample_secret
+
+    call_log = []
+    app = App()
+
+    # Use decorator-level resolver
+    @app.on_action("transcribe.file", name="Transcribe", description="Transcribe file", secret=action_resolver)
+    async def handler(event: ActionEvent):
+        call_log.append(event)
+
+    body = json.dumps(action_payload).encode()
+    ts = int(time.time())
+    headers = {
+        "X-Frameio-Request-Timestamp": str(ts),
+        "X-Frameio-Signature": create_valid_signature(ts, body, sample_secret),
+    }
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/", content=body, headers=headers)
+        assert response.status_code == 200
+
+    # Verify handler was called
+    assert len(call_log) == 1
+    # Verify resolver was called with correct event
+    assert len(resolver_call_log) == 1
+    assert resolver_call_log[0].type == "transcribe.file"
+
+
+async def test_static_secret_takes_precedence_over_resolvers(webhook_payload, sample_secret, create_valid_signature):
+    """Tests that static secret takes precedence over both decorator and app-level resolvers."""
+    resolver = MockSecretResolver(webhook_secret="wrong_secret", action_secret="wrong_secret")
+
+    async def webhook_resolver(event: WebhookEvent) -> str:
+        return "wrong_secret"
+
+    call_log = []
+    app = App(secret_resolver=resolver)
+
+    # Explicit static secret should take precedence
+    @app.on_webhook("file.ready", secret=sample_secret)
+    async def handler(event: WebhookEvent):
+        call_log.append(event)
+
+    body = json.dumps(webhook_payload).encode()
+    ts = int(time.time())
+    headers = {
+        "X-Frameio-Request-Timestamp": str(ts),
+        "X-Frameio-Signature": create_valid_signature(ts, body, sample_secret),
+    }
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/", content=body, headers=headers)
+        assert response.status_code == 200
+
+    # Verify handler was called
+    assert len(call_log) == 1
+    # Verify resolvers were NOT called
+    assert len(resolver.webhook_call_log) == 0
+
+
+async def test_decorator_resolver_takes_precedence_over_app_resolver(
+    webhook_payload, sample_secret, create_valid_signature
+):
+    """Tests that decorator-level resolver takes precedence over app-level resolver."""
+    app_resolver = MockSecretResolver(webhook_secret="wrong_secret", action_secret="wrong_secret")
+    decorator_call_log: list[WebhookEvent] = []
+
+    async def webhook_resolver(event: WebhookEvent) -> str:
+        decorator_call_log.append(event)
+        return sample_secret
+
+    call_log = []
+    app = App(secret_resolver=app_resolver)
+
+    # Decorator resolver should take precedence over app resolver
+    @app.on_webhook("file.ready", secret=webhook_resolver)
+    async def handler(event: WebhookEvent):
+        call_log.append(event)
+
+    body = json.dumps(webhook_payload).encode()
+    ts = int(time.time())
+    headers = {
+        "X-Frameio-Request-Timestamp": str(ts),
+        "X-Frameio-Signature": create_valid_signature(ts, body, sample_secret),
+    }
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/", content=body, headers=headers)
+        assert response.status_code == 200
+
+    # Verify handler was called
+    assert len(call_log) == 1
+    # Verify decorator resolver was called
+    assert len(decorator_call_log) == 1
+    # Verify app resolver was NOT called
+    assert len(app_resolver.webhook_call_log) == 0
+
+
+async def test_resolver_returning_empty_string_fails(webhook_payload, create_valid_signature):
+    """Tests that resolver returning empty string causes request to fail."""
+
+    async def empty_resolver(event: WebhookEvent) -> str:
+        return ""
+
+    call_log = []
+    app = App()
+
+    @app.on_webhook("file.ready", secret=empty_resolver)
+    async def handler(event: WebhookEvent):
+        call_log.append(event)
+
+    body = json.dumps(webhook_payload).encode()
+    ts = int(time.time())
+    headers = {
+        "X-Frameio-Request-Timestamp": str(ts),
+        "X-Frameio-Signature": create_valid_signature(ts, body, "any_secret"),
+    }
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/", content=body, headers=headers)
+        assert response.status_code == 500
+        assert "Secret resolver returned empty value" in response.text
+
+    # Verify handler was NOT called
+    assert len(call_log) == 0
+
+
+async def test_mixed_handlers_different_resolution_strategies(
+    webhook_payload, action_payload, sample_secret, create_valid_signature, monkeypatch
+):
+    """Tests that different handlers can use different secret resolution strategies."""
+    # Set env vars
+    monkeypatch.setenv("WEBHOOK_SECRET", "env_webhook_secret")
+
+    # App-level resolver
+    app_resolver = MockSecretResolver(webhook_secret="app_webhook_secret", action_secret=sample_secret)
+
+    # Decorator-level resolver
+    decorator_call_log: list[WebhookEvent] = []
+
+    async def decorator_resolver(event: WebhookEvent) -> str:
+        decorator_call_log.append(event)
+        return "decorator_webhook_secret"
+
+    webhook_call_log = []
+    action_call_log = []
+    app = App(secret_resolver=app_resolver)
+
+    # Handler 1: Uses static secret
+    @app.on_webhook("file.ready", secret=sample_secret)
+    async def static_handler(event: WebhookEvent):
+        webhook_call_log.append(("static", event))
+
+    # Handler 2: Uses decorator resolver
+    @app.on_webhook("file.created", secret=decorator_resolver)
+    async def decorator_handler(event: WebhookEvent):
+        webhook_call_log.append(("decorator", event))
+
+    # Handler 3: Uses app-level resolver
+    @app.on_action("transcribe.file", name="Transcribe", description="Transcribe file")
+    async def app_resolver_handler(event: ActionEvent):
+        action_call_log.append(event)
+
+    # Test handler 1 (static secret)
+    body1 = json.dumps(webhook_payload).encode()
+    ts1 = int(time.time())
+    headers1 = {
+        "X-Frameio-Request-Timestamp": str(ts1),
+        "X-Frameio-Signature": create_valid_signature(ts1, body1, sample_secret),
+    }
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/", content=body1, headers=headers1)
+        assert response.status_code == 200
+
+    # Test handler 2 (decorator resolver)
+    payload2 = webhook_payload.copy()
+    payload2["type"] = "file.created"
+    body2 = json.dumps(payload2).encode()
+    ts2 = int(time.time())
+    headers2 = {
+        "X-Frameio-Request-Timestamp": str(ts2),
+        "X-Frameio-Signature": create_valid_signature(ts2, body2, "decorator_webhook_secret"),
+    }
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/", content=body2, headers=headers2)
+        assert response.status_code == 200
+
+    # Test handler 3 (app-level resolver)
+    body3 = json.dumps(action_payload).encode()
+    ts3 = int(time.time())
+    headers3 = {
+        "X-Frameio-Request-Timestamp": str(ts3),
+        "X-Frameio-Signature": create_valid_signature(ts3, body3, sample_secret),
+    }
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/", content=body3, headers=headers3)
+        assert response.status_code == 200
+
+    # Verify all handlers were called
+    assert len(webhook_call_log) == 2
+    assert webhook_call_log[0][0] == "static"
+    assert webhook_call_log[1][0] == "decorator"
+    assert len(action_call_log) == 1
+
+    # Verify decorator resolver was called
+    assert len(decorator_call_log) == 1
+
+    # Verify app resolver was called only for action
+    assert len(app_resolver.webhook_call_log) == 0
+    assert len(app_resolver.action_call_log) == 1
+
+
+async def test_resolver_error_handling(webhook_payload, create_valid_signature):
+    """Tests that errors in resolvers are handled gracefully."""
+
+    async def failing_resolver(event: WebhookEvent) -> str:
+        raise RuntimeError("Database connection failed")
+
+    call_log = []
+    app = App()
+
+    @app.on_webhook("file.ready", secret=failing_resolver)
+    async def handler(event: WebhookEvent):
+        call_log.append(event)
+
+    body = json.dumps(webhook_payload).encode()
+    ts = int(time.time())
+    headers = {
+        "X-Frameio-Request-Timestamp": str(ts),
+        "X-Frameio-Signature": create_valid_signature(ts, body, "any_secret"),
+    }
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/", content=body, headers=headers)
+        assert response.status_code == 500
+        assert "Secret resolution failed" in response.text
+
+    # Verify handler was NOT called
+    assert len(call_log) == 0

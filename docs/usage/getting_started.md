@@ -116,14 +116,16 @@ CUSTOM_ACTION_SECRET=your-action-secret-here
 WEBHOOK_SECRET=your-webhook-secret-here
 ```
 
-!!! note
+!!! note "Secret Configuration"
     This example uses the default `CUSTOM_ACTION_SECRET` and `WEBHOOK_SECRET` environment variables, which is recommended when you have **one action and one webhook**.
 
-    If you have **multiple actions or webhooks with different secrets**, pass each secret explicitly via environment variables:
+    **For multiple secrets**: Pass each secret explicitly via environment variables:
     ```python
     @app.on_webhook("file.ready", secret=os.environ["FILES_WEBHOOK_SECRET"])
     @app.on_action("my_app.analyze", "Analyze", "Analyze file", secret=os.environ["ANALYZE_CUSTOM_ACTION_SECRET"])
     ```
+
+    **For dynamic secrets** (e.g., multi-tenant apps, database-backed secrets): See [Dynamic Secret Resolution](app.md#dynamic-secret-resolution) in the App Configuration guide.
 
 ## Step 5: Run Your Application
 
@@ -158,6 +160,7 @@ You now have a working Frame.io integration that:
 
 Explore more features to build powerful integrations:
 
+- **[App Configuration](app.md)** - Configure middleware, OAuth, and dynamic secret resolution
 - **[Webhooks](webhooks.md)** - Learn about different event types and best practices
 - **[Custom Actions](custom_actions.md)** - Build interactive forms and workflows
 - **[Client API](client_api.md)** - Make authenticated calls to Frame.io's API
