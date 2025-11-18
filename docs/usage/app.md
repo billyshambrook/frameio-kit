@@ -188,7 +188,7 @@ class MultiTenantSecretResolver:
     async def get_action_secret(self, event: ActionEvent) -> str:
         """Get action secret for the account from DynamoDB."""
         async with self.session.resource("dynamodb") as dynamodb:
-            table = await dynamodb.Table(self.table_name)
+            table = dynamodb.Table(self.table_name)
             try:
                 response = await table.get_item(
                     Key={
