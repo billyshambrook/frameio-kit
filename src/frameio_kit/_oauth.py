@@ -53,9 +53,10 @@ class OAuthConfig(BaseModel):
     Attributes:
         client_id: Adobe IMS application client ID from Adobe Developer Console.
         client_secret: Adobe IMS application client secret.
-        base_url: Base URL of your application (e.g., "https://myapp.com"). The
-            OAuth callback will be automatically constructed as `{base_url}/auth/callback`
-            and must be registered in Adobe Console.
+        redirect_url: Full OAuth callback URL (e.g., "https://myapp.com/auth/callback").
+            If None, the URL will be automatically inferred from incoming requests.
+            Set this explicitly when behind a reverse proxy or when the public URL
+            differs from what the application sees. Must be registered in Adobe Console.
         scopes: List of OAuth scopes to request. Defaults to Frame.io API access.
         storage: Storage backend instance for persisting encrypted tokens. If None,
             defaults to MemoryStore (in-memory, lost on restart).
@@ -74,17 +75,23 @@ class OAuthConfig(BaseModel):
         from key_value.aio.stores.disk import DiskStore
         import httpx
 
-        # With custom HTTP client for connection pooling
-        custom_client = httpx.AsyncClient(timeout=60.0, limits=httpx.Limits(max_connections=100))
-
+        # Basic configuration
         app = App(
             oauth=OAuthConfig(
                 client_id=os.getenv("ADOBE_CLIENT_ID"),
                 client_secret=os.getenv("ADOBE_CLIENT_SECRET"),
-                base_url="https://myapp.com",
+            )
+        )
+
+        # Full configuration
+        app = App(
+            oauth=OAuthConfig(
+                client_id=os.getenv("ADOBE_CLIENT_ID"),
+                client_secret=os.getenv("ADOBE_CLIENT_SECRET"),
+                redirect_url="https://myapp.com/auth/callback",
                 storage=DiskStore(directory="./tokens"),
                 token_refresh_buffer_seconds=600,  # Refresh 10 minutes early
-                http_client=custom_client,  # Share connection pool
+                http_client=httpx.AsyncClient(timeout=60.0),
             )
         )
         ```
@@ -94,7 +101,7 @@ class OAuthConfig(BaseModel):
 
     client_id: str
     client_secret: str
-    base_url: str
+    redirect_url: str | None = None
     scopes: list[str] = Field(
         default_factory=lambda: ["additional_info.roles", "offline_access", "profile", "email", "openid"]
     )
@@ -102,15 +109,6 @@ class OAuthConfig(BaseModel):
     encryption_key: Optional[str] = None
     token_refresh_buffer_seconds: int = 300  # 5 minutes default
     http_client: Optional[httpx.AsyncClient] = None
-
-    @property
-    def redirect_uri(self) -> str:
-        """Construct the OAuth redirect URI from the base URL.
-
-        Returns:
-            The full redirect URI (e.g., "https://myapp.com/auth/callback").
-        """
-        return f"{self.base_url.rstrip('/')}/auth/callback"
 
 
 class AdobeOAuthClient:
@@ -132,15 +130,16 @@ class AdobeOAuthClient:
         oauth_client = AdobeOAuthClient(
             client_id="your_client_id",
             client_secret="your_client_secret",
-            redirect_uri="https://myapp.com/auth/callback",
             scopes=["openid", "frameio.api"]
         )
 
+        redirect_uri = "https://myapp.com/auth/callback"
+
         # Generate authorization URL
-        auth_url = oauth_client.get_authorization_url(state="random_state")
+        auth_url = oauth_client.get_authorization_url("random_state", redirect_uri)
 
         # Exchange code for tokens
-        token_data = await oauth_client.exchange_code("authorization_code")
+        token_data = await oauth_client.exchange_code("authorization_code", redirect_uri)
 
         # Refresh token
         new_token = await oauth_client.refresh_token(token_data.refresh_token)
@@ -151,7 +150,6 @@ class AdobeOAuthClient:
         self,
         client_id: str,
         client_secret: str,
-        redirect_uri: str,
         scopes: list[str] | None = None,
         http_client: httpx.AsyncClient | None = None,
     ) -> None:
@@ -160,7 +158,6 @@ class AdobeOAuthClient:
         Args:
             client_id: Adobe IMS application client ID.
             client_secret: Adobe IMS application client secret.
-            redirect_uri: OAuth callback URI (must match Adobe Console configuration).
             scopes: List of OAuth scopes. Defaults to Frame.io API access.
             http_client: Optional httpx.AsyncClient for HTTP requests. If not provided,
                 a new client will be created with default settings (30s timeout).
@@ -168,7 +165,6 @@ class AdobeOAuthClient:
         """
         self.client_id = client_id
         self.client_secret = client_secret
-        self.redirect_uri = redirect_uri
         self.scopes = scopes or ["additional_info.roles", "offline_access", "profile", "email", "openid"]
 
         # Adobe IMS OAuth 2.0 endpoints
@@ -179,11 +175,12 @@ class AdobeOAuthClient:
         self._http = http_client or httpx.AsyncClient(timeout=30.0)
         self._owns_http_client = http_client is None  # Track if we should close it
 
-    def get_authorization_url(self, state: str) -> str:
+    def get_authorization_url(self, state: str, redirect_uri: str) -> str:
         """Generate OAuth authorization URL for user redirect.
 
         Args:
             state: CSRF protection token (should be random and verified on callback).
+            redirect_uri: OAuth callback URI (must match Adobe Console configuration).
 
         Returns:
             Complete authorization URL to redirect the user to.
@@ -191,14 +188,17 @@ class AdobeOAuthClient:
         Example:
             ```python
             state = secrets.token_urlsafe(32)
-            auth_url = oauth_client.get_authorization_url(state)
+            auth_url = oauth_client.get_authorization_url(
+                state,
+                "https://myapp.com/auth/callback"
+            )
             # Redirect user to auth_url
             ```
         """
         params = httpx.QueryParams(
             {
                 "client_id": self.client_id,
-                "redirect_uri": self.redirect_uri,
+                "redirect_uri": redirect_uri,
                 "scope": " ".join(self.scopes),
                 "response_type": "code",
                 "state": state,
@@ -206,11 +206,12 @@ class AdobeOAuthClient:
         )
         return f"{self.authorization_url}?{params}"
 
-    async def exchange_code(self, code: str) -> TokenData:
+    async def exchange_code(self, code: str, redirect_uri: str) -> TokenData:
         """Exchange authorization code for access and refresh tokens.
 
         Args:
             code: Authorization code from OAuth callback.
+            redirect_uri: OAuth callback URI (must match the one used in authorization).
 
         Returns:
             TokenData containing access token, refresh token, and metadata.
@@ -221,7 +222,10 @@ class AdobeOAuthClient:
         Example:
             ```python
             # After user authorizes and is redirected with code
-            token_data = await oauth_client.exchange_code(code)
+            token_data = await oauth_client.exchange_code(
+                code,
+                "https://myapp.com/auth/callback"
+            )
             print(f"Access token expires at: {token_data.expires_at}")
             ```
         """
@@ -230,7 +234,7 @@ class AdobeOAuthClient:
             "client_id": self.client_id,
             "client_secret": self.client_secret,
             "code": code,
-            "redirect_uri": self.redirect_uri,
+            "redirect_uri": redirect_uri,
         }
 
         response = await self._http.post(self.token_url, data=data)
@@ -316,7 +320,7 @@ class TokenManager:
     Attributes:
         storage: Storage backend instance (py-key-value-aio compatible).
         encryption: TokenEncryption instance for encrypting tokens at rest.
-        oauth_client: AdobeOAuthClient for refreshing tokens.
+        token_refresh_buffer_seconds: Seconds before expiration to trigger refresh.
 
     Example:
         ```python
@@ -325,7 +329,8 @@ class TokenManager:
         token_manager = TokenManager(
             storage=MemoryStore(),
             encryption=TokenEncryption(),
-            oauth_client=AdobeOAuthClient(...)
+            client_id="your_client_id",
+            client_secret="your_client_secret",
         )
 
         # Store token after OAuth flow
@@ -343,7 +348,10 @@ class TokenManager:
         self,
         storage: AsyncKeyValue,
         encryption: TokenEncryption,
-        oauth_client: AdobeOAuthClient,
+        client_id: str,
+        client_secret: str,
+        scopes: list[str] | None = None,
+        http_client: httpx.AsyncClient | None = None,
         token_refresh_buffer_seconds: int = 300,
     ) -> None:
         """Initialize TokenManager.
@@ -351,14 +359,32 @@ class TokenManager:
         Args:
             storage: py-key-value-aio compatible storage backend.
             encryption: TokenEncryption instance.
-            oauth_client: AdobeOAuthClient for token refresh operations.
+            client_id: Adobe IMS client ID (for creating OAuth client when needed).
+            client_secret: Adobe IMS client secret (for creating OAuth client when needed).
+            scopes: OAuth scopes (for creating OAuth client when needed).
+            http_client: Optional httpx.AsyncClient (for creating OAuth client when needed).
             token_refresh_buffer_seconds: Seconds before expiration to refresh tokens.
                 Defaults to 300 seconds (5 minutes).
         """
         self.storage = storage
         self.encryption = encryption
-        self.oauth_client = oauth_client
+        self._client_id = client_id
+        self._client_secret = client_secret
+        self._scopes = scopes
+        self._http_client = http_client
         self.token_refresh_buffer_seconds = token_refresh_buffer_seconds
+        self._oauth_client: AdobeOAuthClient | None = None
+
+    def _get_oauth_client(self) -> AdobeOAuthClient:
+        """Get or create the OAuth client for token refresh operations."""
+        if self._oauth_client is None:
+            self._oauth_client = AdobeOAuthClient(
+                client_id=self._client_id,
+                client_secret=self._client_secret,
+                scopes=self._scopes,
+                http_client=self._http_client,
+            )
+        return self._oauth_client
 
     def _make_key(self, user_id: str) -> str:
         """Create storage key for user token.
@@ -498,6 +524,7 @@ class TokenManager:
         Raises:
             Exception: If refresh fails.
         """
-        new_token = await self.oauth_client.refresh_token(old_token.refresh_token)
+        oauth_client = self._get_oauth_client()
+        new_token = await oauth_client.refresh_token(old_token.refresh_token)
         new_token.user_id = old_token.user_id
         return new_token

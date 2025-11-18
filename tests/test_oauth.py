@@ -17,7 +17,7 @@ def oauth_config() -> OAuthConfig:
     return OAuthConfig(
         client_id="test_client_id",
         client_secret="test_client_secret",
-        base_url="https://example.com",
+        redirect_url="https://example.com/auth/callback",
         scopes=["openid", "AdobeID", "frameio.api"],
     )
 
@@ -28,7 +28,6 @@ def oauth_client(oauth_config: OAuthConfig) -> AdobeOAuthClient:
     return AdobeOAuthClient(
         client_id=oauth_config.client_id,
         client_secret=oauth_config.client_secret,
-        redirect_uri=oauth_config.redirect_uri,
         scopes=oauth_config.scopes,
     )
 
@@ -38,12 +37,12 @@ async def token_manager() -> TokenManager:
     """Create TokenManager with in-memory storage."""
     storage = MemoryStore()
     encryption = TokenEncryption(key=TokenEncryption.generate_key())
-    oauth_client = AdobeOAuthClient(
+    return TokenManager(
+        storage=storage,
+        encryption=encryption,
         client_id="test_client_id",
         client_secret="test_client_secret",
-        redirect_uri="https://example.com/auth/callback",
     )
-    return TokenManager(storage=storage, encryption=encryption, oauth_client=oauth_client)
 
 
 @pytest.fixture
@@ -65,7 +64,6 @@ class TestAdobeOAuthClient:
         """Test OAuth client initialization."""
         assert oauth_client.client_id == "test_client_id"
         assert oauth_client.client_secret == "test_client_secret"
-        assert oauth_client.redirect_uri == "https://example.com/auth/callback"
         assert oauth_client.scopes == ["openid", "AdobeID", "frameio.api"]
         assert oauth_client.authorization_url == "https://ims-na1.adobelogin.com/ims/authorize/v2"
         assert oauth_client.token_url == "https://ims-na1.adobelogin.com/ims/token/v3"
@@ -73,7 +71,8 @@ class TestAdobeOAuthClient:
     def test_get_authorization_url(self, oauth_client: AdobeOAuthClient):
         """Test authorization URL generation."""
         state = "test_state_token_12345"
-        auth_url = oauth_client.get_authorization_url(state)
+        redirect_uri = "https://example.com/auth/callback"
+        auth_url = oauth_client.get_authorization_url(state, redirect_uri)
 
         # Verify URL structure
         assert auth_url.startswith("https://ims-na1.adobelogin.com/ims/authorize/v2?")
@@ -92,13 +91,15 @@ class TestAdobeOAuthClient:
             "scope": "openid AdobeID frameio.api",
         }
 
+        redirect_uri = "https://example.com/auth/callback"
+
         with patch.object(oauth_client._http, "post", new_callable=AsyncMock) as mock_post:
             # Create mock response object
             mock_resp = MagicMock()
             mock_resp.json.return_value = mock_response
             mock_post.return_value = mock_resp
 
-            token_data = await oauth_client.exchange_code("auth_code_123")
+            token_data = await oauth_client.exchange_code("auth_code_123", redirect_uri)
 
             # Verify token data
             assert token_data.access_token == "new_access_token"
@@ -117,9 +118,12 @@ class TestAdobeOAuthClient:
             assert call_args[1]["data"]["grant_type"] == "authorization_code"
             assert call_args[1]["data"]["code"] == "auth_code_123"
             assert call_args[1]["data"]["client_id"] == "test_client_id"
+            assert call_args[1]["data"]["redirect_uri"] == redirect_uri
 
     async def test_exchange_code_failure(self, oauth_client: AdobeOAuthClient):
         """Test failed authorization code exchange."""
+        redirect_uri = "https://example.com/auth/callback"
+
         with patch.object(oauth_client._http, "post", new_callable=AsyncMock) as mock_post:
             # Create mock response that raises error
             mock_resp = AsyncMock()
@@ -129,7 +133,7 @@ class TestAdobeOAuthClient:
             mock_post.return_value = mock_resp
 
             with pytest.raises(httpx.HTTPStatusError):
-                await oauth_client.exchange_code("invalid_code")
+                await oauth_client.exchange_code("invalid_code", redirect_uri)
 
     async def test_refresh_token_success(self, oauth_client: AdobeOAuthClient):
         """Test successful token refresh."""
@@ -257,9 +261,12 @@ class TestTokenManager:
             user_id=user_id,
         )
 
-        with patch.object(token_manager.oauth_client, "refresh_token", new_callable=AsyncMock) as mock_refresh:
-            mock_refresh.return_value = new_token
+        # Create mock OAuth client
+        mock_oauth_client = MagicMock()
+        mock_refresh = AsyncMock(return_value=new_token)
+        mock_oauth_client.refresh_token = mock_refresh
 
+        with patch.object(token_manager, "_get_oauth_client", return_value=mock_oauth_client):
             # Store expired token
             await token_manager.store_token(user_id, expired_token)
 
@@ -287,12 +294,14 @@ class TestTokenManager:
             user_id=user_id,
         )
 
-        # Mock refresh to fail
-        with patch.object(token_manager.oauth_client, "refresh_token", new_callable=AsyncMock) as mock_refresh:
-            mock_refresh.side_effect = httpx.HTTPStatusError(
-                "Invalid refresh token", request=MagicMock(), response=MagicMock()
-            )
+        # Create mock OAuth client
+        mock_oauth_client = MagicMock()
+        mock_refresh = AsyncMock(
+            side_effect=httpx.HTTPStatusError("Invalid refresh token", request=MagicMock(), response=MagicMock())
+        )
+        mock_oauth_client.refresh_token = mock_refresh
 
+        with patch.object(token_manager, "_get_oauth_client", return_value=mock_oauth_client):
             # Store expired token
             await token_manager.store_token(user_id, expired_token)
 
@@ -325,9 +334,12 @@ class TestTokenManager:
             user_id=user_id,
         )
 
-        with patch.object(token_manager.oauth_client, "refresh_token", new_callable=AsyncMock) as mock_refresh:
-            mock_refresh.return_value = new_token
+        # Create mock OAuth client
+        mock_oauth_client = MagicMock()
+        mock_refresh = AsyncMock(return_value=new_token)
+        mock_oauth_client.refresh_token = mock_refresh
 
+        with patch.object(token_manager, "_get_oauth_client", return_value=mock_oauth_client):
             await token_manager.store_token(user_id, near_expiry_token)
 
             # Get token should trigger refresh due to buffer
@@ -368,31 +380,30 @@ class TestOAuthConfig:
         config = OAuthConfig(
             client_id="test_id",
             client_secret="test_secret",
-            base_url="https://example.com",
+            redirect_url="https://example.com/auth/callback",
         )
 
         assert config.client_id == "test_id"
         assert config.client_secret == "test_secret"
-        assert config.base_url == "https://example.com"
-        assert config.redirect_uri == "https://example.com/auth/callback"
+        assert config.redirect_url == "https://example.com/auth/callback"
         assert config.scopes == ["additional_info.roles", "offline_access", "profile", "email", "openid"]
 
-    def test_redirect_uri_strips_trailing_slash(self):
-        """Test that redirect_uri property strips trailing slash from base_url."""
+    def test_config_with_no_redirect_url(self):
+        """Test OAuth config without explicit redirect_url (will be inferred at runtime)."""
         config = OAuthConfig(
             client_id="test_id",
             client_secret="test_secret",
-            base_url="https://example.com/",
+            redirect_url=None,
         )
 
-        assert config.redirect_uri == "https://example.com/auth/callback"
+        assert config.redirect_url is None
 
     def test_custom_scopes(self):
         """Test OAuth config with custom scopes."""
         config = OAuthConfig(
             client_id="test_id",
             client_secret="test_secret",
-            base_url="https://example.com",
+            redirect_url="https://example.com/auth/callback",
             scopes=["openid", "custom_scope"],
         )
 
@@ -403,7 +414,7 @@ class TestOAuthConfig:
         config = OAuthConfig(
             client_id="test_id",
             client_secret="test_secret",
-            base_url="https://example.com",
+            redirect_url="https://example.com/auth/callback",
         )
 
         assert config.storage is None
@@ -413,7 +424,7 @@ class TestOAuthConfig:
         config = OAuthConfig(
             client_id="test_id",
             client_secret="test_secret",
-            base_url="https://example.com",
+            redirect_url="https://example.com/auth/callback",
             encryption_key="test_key_12345",
         )
 
@@ -424,7 +435,7 @@ class TestOAuthConfig:
         config = OAuthConfig(
             client_id="test_id",
             client_secret="test_secret",
-            base_url="https://example.com",
+            redirect_url="https://example.com/auth/callback",
         )
 
         assert config.http_client is None
@@ -435,7 +446,7 @@ class TestOAuthConfig:
         config = OAuthConfig(
             client_id="test_id",
             client_secret="test_secret",
-            base_url="https://example.com",
+            redirect_url="https://example.com/auth/callback",
             http_client=custom_client,
         )
 
@@ -452,7 +463,6 @@ class TestCustomHttpClient:
         oauth_client = AdobeOAuthClient(
             client_id="test_id",
             client_secret="test_secret",
-            redirect_uri="https://example.com/callback",
             http_client=custom_client,
         )
 
@@ -473,7 +483,6 @@ class TestCustomHttpClient:
         oauth_client = AdobeOAuthClient(
             client_id="test_id",
             client_secret="test_secret",
-            redirect_uri="https://example.com/callback",
         )
 
         # Verify it created its own client
@@ -491,7 +500,6 @@ class TestCustomHttpClient:
         oauth_client = AdobeOAuthClient(
             client_id="test_id",
             client_secret="test_secret",
-            redirect_uri="https://example.com/callback",
             http_client=custom_client,
         )
 
