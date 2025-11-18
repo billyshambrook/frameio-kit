@@ -10,6 +10,9 @@ from frameio_kit import App
 app = App()
 ```
 
+!!! tip "Mounting to Existing Applications"
+    If you have an existing ASGI application (FastAPI, Starlette, etc.), you can mount your frameio-kit `App` directly to it without any code changes. See [Mounting to Existing Apps](mounting.md) for details.
+
 ## Configuration Options
 
 ### API Token
@@ -270,6 +273,7 @@ class SafeSecretResolver:
 
 ## See Also
 
+- [Mounting to Existing Apps](mounting.md) - Mount your App to FastAPI, Starlette, or any ASGI framework
 - [Webhooks](webhooks.md#dynamic-secret-resolution) - Webhook-specific secret resolution
 - [Custom Actions](custom_actions.md#dynamic-secret-resolution) - Action-specific secret resolution
 - [SecretResolver API Reference](../api_reference.md#frameio_kit.SecretResolver)

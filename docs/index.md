@@ -48,6 +48,7 @@ async def analyze_file(event: ActionEvent):
 ## 📚 Learn More
 
 ### **Core Concepts**
+- **[App Configuration](usage/app.md)** - Configure middleware, OAuth, and dynamic secret resolution
 - **[Webhooks](usage/webhooks.md)** - React to Frame.io events automatically
 - **[Custom Actions](usage/custom_actions.md)** - Build interactive user experiences
 - **[Client API](usage/client_api.md)** - Make calls back to Frame.io's API
@@ -55,6 +56,7 @@ async def analyze_file(event: ActionEvent):
 - **[User Authentication](usage/user_auth.md)** - Enable Adobe Login OAuth for user-specific actions
 
 ### **Advanced Features**
+- **[Mounting to Existing Apps](usage/mounting.md)** - Integrate with FastAPI, Starlette, or any ASGI framework
 - **[API Reference](api_reference.md)** - Complete documentation for all classes and methods
 - **Type safety** - Full Pydantic models for all event types
 - **Async patterns** - Best practices for high-performance integrations
