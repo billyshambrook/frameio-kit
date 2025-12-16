@@ -34,10 +34,13 @@ app = App(
     oauth=OAuthConfig(
         client_id=os.environ["ADOBE_CLIENT_ID"],
         client_secret=os.environ["ADOBE_CLIENT_SECRET"],
-        base_url="https://yourapp.com",
     )
 )
 ```
+
+!!! note "Automatic Redirect URL Inference"
+
+    By default, the OAuth callback URL is automatically inferred from incoming requests. This inference relies on proper forwarding of headers (`X-Forwarded-Host`, `X-Forwarded-Proto`) from reverse proxies or load balancers. For such deployments, you may need to set `redirect_url` explicitly. See [Redirect URL Configuration](#redirect-url-configuration).
 
 !!! note "Token Storage"
 
@@ -94,14 +97,40 @@ async def process_file(event: ActionEvent):
 
 - `client_id` - Adobe IMS client ID
 - `client_secret` - Adobe IMS client secret
-- `base_url` - Base URL of your application (callback will be `{base_url}/auth/callback`)
 
 ### Optional Parameters
 
+- `redirect_url` - Full OAuth callback URL (default: automatically inferred). Set explicitly for reverse proxy scenarios.
 - `scopes` - OAuth scopes (default: `["additional_info.roles", "offline_access", "profile", "email", "openid"]`)
 - `storage` - Token storage backend (default: `MemoryStore()`)
 - `encryption_key` - Explicit encryption key (default: environment variable or ephemeral)
 
+### Redirect URL Configuration
+
+Set `redirect_url` explicitly when:
+
+- Behind a reverse proxy without proper forwarded headers
+- Public URL differs from what the application sees
+- Load balancer doesn't forward `X-Forwarded-Host` and `X-Forwarded-Proto` headers
+
+```python
+app = App(
+    oauth=OAuthConfig(
+        client_id=os.environ["ADOBE_CLIENT_ID"],
+        client_secret=os.environ["ADOBE_CLIENT_SECRET"],
+        redirect_url="https://yourapp.com/auth/callback",
+    )
+)
+```
+
+Make sure to consider [mounting](mounting.md) when setting the `redirect_url`.
+
+!!! warning "Important: Mount Path Consideration"
+    If you mount your app at a subpath (e.g., `/frameio`), your `redirect_url` must include the mount path.  
+    For example, if your app is mounted at `/frameio`, set:  
+    `redirect_url="https://yourapp.com/frameio/auth/callback"`  
+    not  
+    `redirect_url="https://yourapp.com/auth/callback"`
 ### Complete Example
 
 ```python
@@ -111,7 +140,7 @@ app = App(
     oauth=OAuthConfig(
         client_id=os.environ["ADOBE_CLIENT_ID"],
         client_secret=os.environ["ADOBE_CLIENT_SECRET"],
-        base_url="https://yourapp.com",
+        redirect_url="https://yourapp.com/auth/callback",  # Explicit for proxy
         scopes=["openid", "AdobeID", "frameio.api"],
         storage=RedisStore(url="redis://localhost:6379"),
         encryption_key=os.environ["FRAMEIO_AUTH_ENCRYPTION_KEY"],
@@ -270,7 +299,9 @@ async def user_action(event: ActionEvent):
 
 **"redirect_uri_mismatch" error**
 
-- `base_url` + `/auth/callback` must match one registered in Adobe Developer Console
+- The inferred or configured `redirect_url` must match one registered in Adobe Developer Console
+- If using automatic inference, register the callback URL you expect (e.g., `https://yourapp.com/auth/callback`)
+- If behind a proxy, either configure forwarded headers or set `redirect_url` explicitly
 
 ## Next Steps
 

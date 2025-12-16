@@ -40,17 +40,16 @@ pip install frameio-kit uvicorn
 Create a file named `main.py` with the following code:
 
 ```python
-import os
 from frameio_kit import App, ActionEvent, WebhookEvent, Message
 
 app = App()
 
 # Custom Action: Responds to user clicks in Frame.io
+# CUSTOM_ACTION_SECRET env var will be used automatically
 @app.on_action(
     event_type="greeting.say_hello",
     name="Say Hello",
-    description="A simple greeting action",
-    secret=os.environ["ACTION_SECRET"]
+    description="A simple greeting action"
 )
 async def on_greeting(event: ActionEvent):
     print(f"Hello from {event.user.id}!")
@@ -60,7 +59,8 @@ async def on_greeting(event: ActionEvent):
     )
 
 # Webhook: Responds to file events from Frame.io
-@app.on_webhook("file.ready", secret=os.environ["WEBHOOK_SECRET"])
+# WEBHOOK_SECRET env var will be used automatically
+@app.on_webhook("file.ready")
 async def on_file_ready(event: WebhookEvent):
     print(f"File {event.resource_id} is ready!")
 ```
@@ -71,6 +71,7 @@ async def on_file_ready(event: WebhookEvent):
 - **Webhook** - Listens for `file.ready` events and prints the file ID when files are processed
 - **`App()`** - Initializes your Frame.io integration
 - **`Message`** - Returned from the custom action handler to display a response in the Frame.io UI
+- **Environment Variables** - `CUSTOM_ACTION_SECRET` and `WEBHOOK_SECRET` are automatically loaded from environment
 
 Learn more about [Custom Actions](custom_actions.md) and [Webhooks](webhooks.md)
 
@@ -111,9 +112,20 @@ Copy the HTTPS forwarding URL (e.g., `https://abc123.ngrok-free.app`) – you'll
 Create a `.env` file with the secrets from Frame.io:
 
 ```bash
-ACTION_SECRET=your-action-secret-here
+CUSTOM_ACTION_SECRET=your-action-secret-here
 WEBHOOK_SECRET=your-webhook-secret-here
 ```
+
+!!! note "Secret Configuration"
+    This example uses the default `CUSTOM_ACTION_SECRET` and `WEBHOOK_SECRET` environment variables, which is recommended when you have **one action and one webhook**.
+
+    **For multiple secrets**: Pass each secret explicitly via environment variables:
+    ```python
+    @app.on_webhook("file.ready", secret=os.environ["FILES_WEBHOOK_SECRET"])
+    @app.on_action("my_app.analyze", "Analyze", "Analyze file", secret=os.environ["ANALYZE_CUSTOM_ACTION_SECRET"])
+    ```
+
+    **For dynamic secrets** (e.g., multi-tenant apps, database-backed secrets): See [Dynamic Secret Resolution](app.md#dynamic-secret-resolution) in the App Configuration guide.
 
 ## Step 5: Run Your Application
 
@@ -148,6 +160,7 @@ You now have a working Frame.io integration that:
 
 Explore more features to build powerful integrations:
 
+- **[App Configuration](app.md)** - Configure middleware, OAuth, and dynamic secret resolution
 - **[Webhooks](webhooks.md)** - Learn about different event types and best practices
 - **[Custom Actions](custom_actions.md)** - Build interactive forms and workflows
 - **[Client API](client_api.md)** - Make authenticated calls to Frame.io's API

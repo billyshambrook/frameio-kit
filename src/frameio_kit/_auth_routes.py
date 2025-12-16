@@ -13,7 +13,7 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse
 from starlette.routing import Route
 
-from ._oauth import AdobeOAuthClient, TokenManager
+from ._oauth import AdobeOAuthClient, TokenManager, get_oauth_redirect_url
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +32,10 @@ async def _login_endpoint(request: Request) -> RedirectResponse | HTMLResponse:
     Returns:
         Redirect to Adobe IMS authorization page.
     """
-    # Get oauth client and token manager from app state
-    oauth_client: AdobeOAuthClient = request.app.state.oauth_client
+    from ._oauth import OAuthConfig
+
+    # Get oauth config and token manager from app state
+    oauth_config: OAuthConfig = request.app.state.oauth_config
     token_manager: TokenManager = request.app.state.token_manager
 
     # Extract user context from query params
@@ -45,6 +47,12 @@ async def _login_endpoint(request: Request) -> RedirectResponse | HTMLResponse:
             "<h1>Error</h1><p>Missing user_id parameter</p>",
             status_code=400,
         )
+
+    # Get redirect URL - use explicit config or infer from request
+    redirect_url = get_oauth_redirect_url(oauth_config, request)
+
+    # Get shared OAuth client from app state
+    oauth_client: AdobeOAuthClient = request.app.state.oauth_client
 
     # Generate CSRF state token
     state = secrets.token_urlsafe(32)
@@ -61,7 +69,7 @@ async def _login_endpoint(request: Request) -> RedirectResponse | HTMLResponse:
     await token_manager.storage.put(state_key, state_data, ttl=OAUTH_STATE_TTL)
 
     # Redirect to Adobe OAuth
-    auth_url = oauth_client.get_authorization_url(state)
+    auth_url = oauth_client.get_authorization_url(state, redirect_url)
     return RedirectResponse(auth_url)
 
 
@@ -78,9 +86,8 @@ async def _callback_endpoint(request: Request) -> HTMLResponse | RedirectRespons
     Returns:
         HTML page with success or error message, or redirect to workspace selection for installation.
     """
-    # Get token manager and oauth client from app state
+    # Get token manager from app state
     token_manager: TokenManager = request.app.state.token_manager
-    oauth_client: AdobeOAuthClient = request.app.state.oauth_client
 
     code = request.query_params.get("code")
     state = request.query_params.get("state")
@@ -252,12 +259,8 @@ async def _callback_endpoint(request: Request) -> HTMLResponse | RedirectRespons
         )
 
 
-def create_auth_routes(token_manager: TokenManager, oauth_client: AdobeOAuthClient) -> list[Route]:
+def create_auth_routes() -> list[Route]:
     """Create OAuth authentication routes.
-
-    Args:
-        token_manager: TokenManager instance for storing tokens.
-        oauth_client: AdobeOAuthClient for OAuth operations.
 
     Returns:
         List of Starlette Route objects to mount in the app.
@@ -267,12 +270,14 @@ def create_auth_routes(token_manager: TokenManager, oauth_client: AdobeOAuthClie
         - GET /auth/login - Initiates OAuth flow
         - GET /auth/callback - Handles OAuth callback
 
+        Routes expect oauth_config and token_manager to be available in app.state.
+
     Example:
         ```python
         from starlette.applications import Starlette
 
         app = Starlette()
-        auth_routes = create_auth_routes(token_manager, oauth_client)
+        auth_routes = create_auth_routes()
         app.routes.extend(auth_routes)
         ```
     """

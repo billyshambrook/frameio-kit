@@ -1,4 +1,11 @@
-from ._app import ActionHandlerFunc, App, WebhookHandlerFunc
+from ._app import (
+    ActionHandlerFunc,
+    ActionSecretResolver,
+    App,
+    SecretResolver,
+    WebhookHandlerFunc,
+    WebhookSecretResolver,
+)
 from ._client import Client
 from ._context import get_user_token
 from ._events import Account, ActionEvent, AnyEvent, Project, Resource, User, WebhookEvent, Workspace
@@ -22,8 +29,11 @@ from ._security import verify_signature
 __all__ = [
     # _app.py
     "ActionHandlerFunc",
+    "ActionSecretResolver",
     "App",
+    "SecretResolver",
     "WebhookHandlerFunc",
+    "WebhookSecretResolver",
     # _client.py
     "Client",
     # _context.py
