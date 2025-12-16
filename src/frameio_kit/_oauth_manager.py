@@ -93,9 +93,14 @@ class OAuthManager:
 
         This method should be called during application shutdown to ensure
         proper cleanup of HTTP connections.
+
+        Raises:
+            Exception: Re-raises any exception that occurs during cleanup
+                after logging it, allowing callers to track cleanup failures.
         """
         try:
             await self.oauth_client.close()
             logger.debug("OAuth client closed")
         except Exception:
             logger.exception("Error closing OAuth client")
+            raise

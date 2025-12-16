@@ -17,6 +17,10 @@ from ._exceptions import TokenExchangeError, TokenRefreshError
 
 logger = logging.getLogger(__name__)
 
+# Default token expiration time (in seconds) when 'expires_in' is missing from
+# token response. Adobe IMS tokens typically expire in 1 hour (3600 seconds).
+DEFAULT_TOKEN_EXPIRES_SECONDS = 3600
+
 
 class TokenData(BaseModel):
     """OAuth token data model for secure storage.
@@ -237,8 +241,8 @@ class AdobeOAuthClient:
         # Validate expires_in
         expires_in = response.get("expires_in")
         if expires_in is None:
-            logger.warning("Missing 'expires_in' in token response, defaulting to 3600")
-            expires_in = 3600
+            logger.warning("Missing 'expires_in' in token response, defaulting to %d", DEFAULT_TOKEN_EXPIRES_SECONDS)
+            expires_in = DEFAULT_TOKEN_EXPIRES_SECONDS
         try:
             expires_in = int(expires_in)
         except (TypeError, ValueError):
@@ -246,7 +250,8 @@ class AdobeOAuthClient:
         if expires_in <= 0:
             raise TokenExchangeError(f"'expires_in' must be positive, got: {expires_in}")
 
-        # Parse scopes, filtering empty strings
+        # Parse scopes from space-separated string. Filter empty strings to handle
+        # edge cases like extra whitespace or empty scope responses from the API.
         scope_str = response.get("scope", "")
         scopes = [s for s in scope_str.split() if s]
 

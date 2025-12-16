@@ -207,7 +207,7 @@ class App:
             raise RuntimeError("Cannot access token manager. OAuth not configured in App initialization.")
         return self._oauth_manager.token_manager
 
-    async def validate_configuration(self) -> list[str]:
+    def validate_configuration(self) -> list[str]:
         """Check configuration is valid before accepting requests.
 
         This method validates that all registered handlers have valid
@@ -219,7 +219,7 @@ class App:
 
         Example:
             ```python
-            errors = await app.validate_configuration()
+            errors = app.validate_configuration()
             if errors:
                 for error in errors:
                     print(f"Configuration error: {error}")
@@ -404,7 +404,7 @@ class App:
                 cleanup_errors.append(e)
 
         if cleanup_errors:
-            logger.warning(f"Encountered {len(cleanup_errors)} error(s) during cleanup")
+            logger.warning("Encountered %d error(s) during cleanup", len(cleanup_errors))
 
     def _create_asgi_app(self) -> Starlette:
         """Builds the Starlette ASGI application with routes and lifecycle hooks."""
