@@ -48,6 +48,7 @@ nav:
       - Mounting to Existing Apps: usage/mounting.md
       - Webhooks: usage/webhooks.md
       - Custom Actions: usage/custom_actions.md
+      - App Installation: usage/installation.md
       - Client API: usage/client_api.md
       - Middleware: usage/middleware.md
       - User Authentication: usage/user_auth.md
@@ -86,7 +87,6 @@ markdown_extensions:
   - pymdownx.highlight:
       anchor_linenums: true
       line_spans: __span
-      pygments_lang_class: true
   - pymdownx.inlinehilite
   - admonition
   - pymdownx.details

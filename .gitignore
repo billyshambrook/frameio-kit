@@ -12,6 +12,7 @@ wheels/
 .venv
 tokens/
 
+.env
 
 # Docs
 site/

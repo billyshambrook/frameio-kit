@@ -37,7 +37,7 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import AsyncGenerator, Awaitable, Callable, Protocol, cast
+from typing import TYPE_CHECKING, AsyncGenerator, Awaitable, Callable, Protocol, cast
 
 from pydantic import ValidationError
 from starlette.applications import Starlette
@@ -55,6 +55,10 @@ from ._middleware import Middleware
 from ._oauth import OAuthConfig, TokenManager, infer_oauth_url
 from ._responses import AnyResponse, Form, Message
 from ._security import verify_signature
+
+if TYPE_CHECKING:
+    from ._install_manager import InstallationManager
+    from ._install_models import InstallationConfig
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +154,7 @@ class App:
         token: str | None = None,
         middleware: list[Middleware] = [],
         oauth: OAuthConfig | None = None,
+        installation: "InstallationConfig | None" = None,
         secret_resolver: SecretResolver | None = None,
     ) -> None:
         """Initializes the FrameApp.
@@ -165,6 +170,9 @@ class App:
             oauth: Optional OAuth configuration for user authentication. When
                 provided, enables Adobe Login OAuth flow for actions that
                 require user-specific authentication.
+            installation: Optional installation configuration. When provided,
+                enables the app installation system with automatic custom action
+                and webhook creation.
             secret_resolver: Optional app-level secret resolver that implements
                 the SecretResolver protocol. Provides dynamic secret resolution
                 for webhooks and actions. Falls back to environment variables if
@@ -173,10 +181,16 @@ class App:
         self._token = token
         self._middleware = middleware or []
         self._oauth_config = oauth
+        self._installation_config = installation
         self._secret_resolver = secret_resolver
         self._api_client: Client | None = None
         self._webhook_handlers: dict[str, _HandlerRegistration] = {}
         self._action_handlers: dict[str, _HandlerRegistration] = {}
+        self._installation_manager: "InstallationManager | None" = None
+
+        # Check if installation is enabled without OAuth
+        if self._installation_config and self._installation_config.enabled and not self._oauth_config:
+            raise RuntimeError("Installation requires OAuth configuration")
 
         # Initialize OAuth components if configured
         self._token_manager: TokenManager | None = None
@@ -199,6 +213,19 @@ class App:
                 http_client=self._oauth_config.http_client,
                 token_refresh_buffer_seconds=self._oauth_config.token_refresh_buffer_seconds,
             )
+
+            # Initialize installation manager if installation is enabled
+            # Note: Manifest generation is deferred until first access to ensure
+            # all handlers have been registered via decorators
+            if self._installation_config and self._installation_config.enabled:
+                from ._install_manager import InstallationManager
+
+                self._installation_manager = InstallationManager(
+                    app=self,
+                    storage=storage,
+                    encryption=encryption,
+                    manifest=None,  # Will be lazily generated
+                )
 
             # Create a shared OAuth client for auth routes to reuse
             from ._oauth import AdobeOAuthClient
@@ -268,6 +295,34 @@ class App:
         if not self._token_manager:
             raise RuntimeError("Cannot access token manager. OAuth not configured in App initialization.")
         return self._token_manager
+
+    @property
+    def installation_manager(self) -> "InstallationManager":
+        """Provides access to the installation manager.
+
+        This manager handles app installations across workspaces, including
+        creating custom actions and webhooks. Only available when installation
+        is enabled.
+
+        Example:
+            ```python
+            # List installations for a user
+            installations = await app.installation_manager.list_installations(user_id="user_123")
+
+            # Get installation for specific workspace
+            installation = await app.installation_manager.get_installation(workspace_id="ws_123")
+            ```
+
+        Returns:
+            The InstallationManager instance.
+
+        Raises:
+            RuntimeError: If installation was not configured during App initialization.
+        """
+
+        if not self._installation_manager:
+            raise RuntimeError("Cannot access installation manager. Installation not configured in App initialization.")
+        return self._installation_manager
 
     def _resolve_secret_at_decorator_time(
         self,
@@ -472,6 +527,10 @@ class App:
             app.state.oauth_config = self._oauth_config
             app.state.oauth_client = self._oauth_client
 
+        # Store installation manager in app state for route access
+        if self._installation_manager and self._oauth_config:
+            app.state.install_manager = self._installation_manager
+
         yield
 
         if self._api_client:
@@ -488,6 +547,13 @@ class App:
         if self._token_manager:
             auth_routes = create_auth_routes()
             routes.extend(auth_routes)
+
+        # Add installation routes if configured
+        if self._installation_manager:
+            from ._install_routes import create_install_routes
+
+            install_routes = create_install_routes()
+            routes.extend(install_routes)
 
         return Starlette(
             debug=True,
@@ -582,6 +648,25 @@ class App:
         handler_reg = self._find_handler(event_type)
         if not handler_reg:
             return Response(f"No handler registered for event type '{event_type}'.", status_code=404)
+
+        # Determine which secret to use for signature verification
+        # Priority: workspace-specific secret from installation > decorator secret
+        secret = handler_reg.secret
+        if self._installation_manager:
+            # Extract workspace_id from payload
+            workspace_id = payload.get("workspace", {}).get("id")
+            if workspace_id:
+                # Try to get workspace-specific secret
+                workspace_secret = await self._installation_manager.get_secret(workspace_id, event_type)
+                if workspace_secret:
+                    secret = workspace_secret
+
+        if not await verify_signature(request.headers, body, secret):
+            return Response("Invalid signature.", status_code=401)
+
+        # Extract timestamp from headers and add to payload
+        # Note: verify_signature already validated that this header exists and is valid
+        payload["timestamp"] = int(request.headers["X-Frameio-Request-Timestamp"])
 
         # Extract timestamp from headers and add to payload before validation
         # This is required for event parsing

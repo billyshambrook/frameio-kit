@@ -338,9 +338,11 @@ class TestCallbackEndpoint:
             # Make callback request
             response = test_client.get("/auth/callback", params={"code": "auth_code", "state": state})
 
-            # Callback should use the stored redirect_url
-            # Response should attempt token exchange (will likely fail without mocking)
-            assert response.status_code in (200, 500)
+            assert response.status_code == 500
+            assert "Authentication Failed" in response.text
+            # Error details should not be exposed to users for security
+            assert "An unexpected error occurred" in response.text
+            assert "Token exchange failed" not in response.text
 
 
 class TestCreateAuthRoutes:

@@ -4,14 +4,22 @@ This module provides OAuth 2.0 endpoints for the authorization code flow,
 including login initiation and callback handling with CSRF protection.
 """
 
+import logging
 import secrets
+from datetime import datetime
 from typing import Any
 
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse
 from starlette.routing import Route
 
-from ._oauth import AdobeOAuthClient, TokenManager, get_oauth_redirect_url
+from ._oauth import AdobeOAuthClient, TokenManager, get_oauth_redirect_url, infer_oauth_url
+
+logger = logging.getLogger(__name__)
+
+# Constants for session configuration
+OAUTH_STATE_TTL = 600  # 10 minutes
+INSTALL_SESSION_TTL = 600  # 10 minutes
 
 
 async def _login_endpoint(request: Request) -> RedirectResponse | HTMLResponse:
@@ -50,22 +58,25 @@ async def _login_endpoint(request: Request) -> RedirectResponse | HTMLResponse:
     state = secrets.token_urlsafe(32)
 
     # Store state in storage backend with 10-minute TTL (600 seconds)
-    # Include redirect_url so callback can use the same one
+    # Include IP and timestamp for additional security
     state_data: dict[str, Any] = {
         "user_id": user_id,
         "interaction_id": interaction_id,
-        "redirect_url": redirect_url,
+        "timestamp": datetime.now().isoformat(),
+        "ip": request.client.host if request.client else None,
     }
     state_key = f"oauth_state:{state}"
-    await token_manager.storage.put(state_key, state_data, ttl=600)
+    await token_manager.storage.put(state_key, state_data, ttl=OAUTH_STATE_TTL)
 
     # Redirect to Adobe OAuth
     auth_url = oauth_client.get_authorization_url(state, redirect_url)
     return RedirectResponse(auth_url)
 
 
-async def _callback_endpoint(request: Request) -> HTMLResponse:
+async def _callback_endpoint(request: Request) -> HTMLResponse | RedirectResponse:
     """Handle OAuth callback from Adobe IMS.
+
+    Supports both regular authentication and installation flows.
 
     Query parameters:
         code: Authorization code (present on success)
@@ -73,7 +84,7 @@ async def _callback_endpoint(request: Request) -> HTMLResponse:
         error: Error code (present on failure)
 
     Returns:
-        HTML page with success or error message.
+        HTML page with success or error message, or redirect to workspace selection for installation.
     """
     # Get token manager from app state
     token_manager: TokenManager = request.app.state.token_manager
@@ -126,32 +137,66 @@ async def _callback_endpoint(request: Request) -> HTMLResponse:
             status_code=400,
         )
 
+    # Validate IP matches (protection against token fixation attacks)
+    request_ip = request.client.host if request.client else None
+    state_ip = state_data.get("ip")
+    if state_ip and request_ip and state_ip != request_ip:
+        logger.warning(
+            "OAuth state token used from different IP: %s (state) vs %s (request). Possible token fixation attack.",
+            state_ip,
+            request_ip,
+        )
+        # For now, log but continue - may reject in stricter security mode
+        # In production, consider rejecting based on security requirements
+
     # Delete state after retrieval (consume once)
     await token_manager.storage.delete(state_key)
 
-    user_id = state_data.get("user_id")
-    redirect_url = state_data.get("redirect_url")
-
-    if not user_id or not redirect_url:
-        return HTMLResponse(
-            """
-            <html>
-            <head><title>Invalid State Data</title></head>
-            <body>
-                <h1>❌ Invalid State Data</h1>
-                <p>The authentication state is incomplete or corrupted.</p>
-                <p>Please close this window and try again.</p>
-            </body>
-            </html>
-            """,
-            status_code=400,
-        )
-    # Get shared OAuth client from app state
-    oauth_client: AdobeOAuthClient = request.app.state.oauth_client
-
     try:
-        # Exchange code for tokens using the same redirect URL
-        token_data = await oauth_client.exchange_code(code, redirect_url)
+        # Exchange code for tokens
+        token_data = await request.app.state.oauth_client.exchange_code(
+            code, get_oauth_redirect_url(request.app.state.oauth_config, request)
+        )
+
+        # Check if this is an installation flow
+        if state_data.get("flow") == "installation":
+            # Installation flow - get user ID and redirect to workspace selection
+            from ._client import Client
+
+            temp_client = Client(token=token_data.access_token)
+            try:
+                user = await temp_client.users.show()
+                user_id = user.data.id
+            finally:
+                await temp_client.close()
+
+            # Store token temporarily for installation process
+            import secrets
+
+            install_session_id = secrets.token_urlsafe(32)
+            session_key = f"install_session:{install_session_id}"
+            await token_manager.storage.put(
+                session_key,
+                {
+                    "user_id": user_id,
+                    "access_token": token_data.access_token,
+                },
+                ttl=INSTALL_SESSION_TTL,
+            )
+
+            # Redirect to workspace selection
+            install_base_url: str = infer_oauth_url(request, "/install/workspaces")
+            return RedirectResponse(f"{install_base_url}?session={install_session_id}")
+
+        # Regular auth flow - user_id is required
+        user_id = state_data.get("user_id")
+        if not user_id:
+            return HTMLResponse(
+                "<h1>Error</h1><p>Missing user_id in authentication state</p>",
+                status_code=400,
+            )
+
+        # Store token for regular auth
         await token_manager.store_token(user_id, token_data)
 
         # Success page
@@ -198,13 +243,15 @@ async def _callback_endpoint(request: Request) -> HTMLResponse:
             """
         )
     except Exception as e:
+        logger.error("OAuth callback error: %s", str(e), exc_info=True)
+        # Don't expose internal error details to users
         return HTMLResponse(
-            f"""
+            """
             <html>
             <head><title>Authentication Failed</title></head>
             <body>
                 <h1>❌ Authentication Failed</h1>
-                <p><strong>Error:</strong> {str(e)}</p>
+                <p>An unexpected error occurred during authentication.</p>
                 <p>Please close this window and try again.</p>
             </body>
             </html>
