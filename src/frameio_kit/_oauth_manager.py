@@ -8,7 +8,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from ._encryption import TokenEncryption
-from ._oauth import AdobeOAuthClient, OAuthConfig, TokenManager
+from ._oauth import AdobeOAuthClient, OAuthConfig, StateSerializer, TokenManager
 
 if TYPE_CHECKING:
     from key_value.aio.protocols import AsyncKeyValue
@@ -85,6 +85,9 @@ class OAuthManager:
             scopes=config.scopes,
             http_client=config.http_client,
         )
+
+        # Create state serializer for stateless OAuth state tokens
+        self.state_serializer = StateSerializer(secret_key=config.encryption_key)
 
         logger.debug("OAuth manager initialized with client_id=%s", config.client_id)
 

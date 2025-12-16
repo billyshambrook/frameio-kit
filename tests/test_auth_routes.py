@@ -6,7 +6,10 @@ from starlette.testclient import TestClient
 
 from frameio_kit._auth_routes import create_auth_routes
 from frameio_kit._encryption import TokenEncryption
-from frameio_kit._oauth import OAuthConfig, TokenManager
+from frameio_kit._oauth import OAuthConfig, StateSerializer, TokenManager
+
+# Test secret key for StateSerializer
+TEST_SECRET_KEY = TokenEncryption.generate_key()
 
 
 @pytest.fixture
@@ -16,6 +19,7 @@ def oauth_config() -> OAuthConfig:
         client_id="test_client_id",
         client_secret="test_client_secret",
         redirect_url="https://example.com/auth/callback",
+        encryption_key=TEST_SECRET_KEY,
     )
 
 
@@ -26,6 +30,7 @@ def oauth_config_no_redirect() -> OAuthConfig:
         client_id="test_client_id",
         client_secret="test_client_secret",
         redirect_url=None,
+        encryption_key=TEST_SECRET_KEY,
     )
 
 
@@ -35,13 +40,19 @@ def token_manager() -> TokenManager:
     from key_value.aio.stores.memory import MemoryStore
 
     storage = MemoryStore()
-    encryption = TokenEncryption(key=TokenEncryption.generate_key())
+    encryption = TokenEncryption(key=TEST_SECRET_KEY)
     return TokenManager(
         storage=storage,
         encryption=encryption,
         client_id="test_client_id",
         client_secret="test_client_secret",
     )
+
+
+@pytest.fixture
+def state_serializer() -> StateSerializer:
+    """Create test state serializer."""
+    return StateSerializer(secret_key=TEST_SECRET_KEY)
 
 
 @pytest.fixture
@@ -57,12 +68,15 @@ def oauth_client(oauth_config: OAuthConfig):
 
 
 @pytest.fixture
-def test_app(oauth_config: OAuthConfig, token_manager: TokenManager, oauth_client) -> Starlette:
+def test_app(
+    oauth_config: OAuthConfig, token_manager: TokenManager, oauth_client, state_serializer: StateSerializer
+) -> Starlette:
     """Create test Starlette app with auth routes."""
     app = Starlette()
     app.state.oauth_config = oauth_config
     app.state.token_manager = token_manager
     app.state.oauth_client = oauth_client
+    app.state.state_serializer = state_serializer
 
     # Add auth routes
     auth_routes = create_auth_routes()
@@ -93,8 +107,8 @@ class TestLoginEndpoint:
         assert "response_type=code" in location
         assert "state=" in location
 
-    async def test_login_stores_state(self, client: TestClient, token_manager: TokenManager):
-        """Test that login endpoint stores CSRF state in storage."""
+    def test_login_embeds_state_in_token(self, client: TestClient, state_serializer: StateSerializer):
+        """Test that login endpoint embeds state data in signed token."""
         response = client.get("/auth/login", params={"user_id": "user_123"}, follow_redirects=False)
 
         # Extract state from redirect URL
@@ -102,14 +116,12 @@ class TestLoginEndpoint:
         state_param = [p for p in location.split("&") if p.startswith("state=")][0]
         state = state_param.split("=")[1]
 
-        # Verify state is stored in storage backend
-        state_key = f"oauth_state:{state}"
-        state_data = await token_manager.storage.get(state_key)
-        assert state_data is not None
+        # Verify state can be decoded and contains expected data
+        state_data = state_serializer.loads(state)
         assert state_data["user_id"] == "user_123"
         assert "redirect_url" in state_data
 
-    async def test_login_with_interaction_id(self, client: TestClient, token_manager: TokenManager):
+    def test_login_with_interaction_id(self, client: TestClient, state_serializer: StateSerializer):
         """Test login with interaction_id parameter."""
         response = client.get(
             "/auth/login", params={"user_id": "user_123", "interaction_id": "interaction_456"}, follow_redirects=False
@@ -122,9 +134,7 @@ class TestLoginEndpoint:
         state_param = [p for p in location.split("&") if p.startswith("state=")][0]
         state = state_param.split("=")[1]
 
-        state_key = f"oauth_state:{state}"
-        state_data = await token_manager.storage.get(state_key)
-        assert state_data is not None
+        state_data = state_serializer.loads(state)
         assert state_data["interaction_id"] == "interaction_456"
 
     def test_login_missing_user_id(self, client: TestClient):
@@ -134,22 +144,20 @@ class TestLoginEndpoint:
         assert response.status_code == 400
         assert "Missing user_id parameter" in response.text
 
-    async def test_login_with_explicit_redirect_url(self, client: TestClient, token_manager: TokenManager):
+    def test_login_with_explicit_redirect_url(self, client: TestClient, state_serializer: StateSerializer):
         """Test that explicit redirect_url is used when configured."""
         response = client.get("/auth/login", params={"user_id": "user_123"}, follow_redirects=False)
 
-        # Extract state and verify redirect_url is stored
+        # Extract state and verify redirect_url is embedded
         location = response.headers["location"]
         state_param = [p for p in location.split("&") if p.startswith("state=")][0]
         state = state_param.split("=")[1]
 
-        state_key = f"oauth_state:{state}"
-        state_data = await token_manager.storage.get(state_key)
-        assert state_data is not None
+        state_data = state_serializer.loads(state)
         assert state_data["redirect_url"] == "https://example.com/auth/callback"
 
-    async def test_login_with_inferred_redirect_url_root_mount(
-        self, oauth_config_no_redirect: OAuthConfig, token_manager: TokenManager
+    def test_login_with_inferred_redirect_url_root_mount(
+        self, oauth_config_no_redirect: OAuthConfig, token_manager: TokenManager, state_serializer: StateSerializer
     ):
         """Test redirect URL inference for app mounted at root."""
         from frameio_kit._oauth import AdobeOAuthClient
@@ -162,6 +170,7 @@ class TestLoginEndpoint:
             client_id=oauth_config_no_redirect.client_id,
             client_secret=oauth_config_no_redirect.client_secret,
         )
+        app.state.state_serializer = state_serializer
         auth_routes = create_auth_routes()
         app.routes.extend(auth_routes)
 
@@ -173,14 +182,12 @@ class TestLoginEndpoint:
             state_param = [p for p in location.split("&") if p.startswith("state=")][0]
             state = state_param.split("=")[1]
 
-            state_key = f"oauth_state:{state}"
-            state_data = await token_manager.storage.get(state_key)
-            assert state_data is not None
+            state_data = state_serializer.loads(state)
             # For root mount, path is /auth/login, mount_prefix is ""
             assert state_data["redirect_url"] == "https://testserver/auth/callback"
 
-    async def test_login_with_inferred_redirect_url_prefix_mount(
-        self, oauth_config_no_redirect: OAuthConfig, token_manager: TokenManager
+    def test_login_with_inferred_redirect_url_prefix_mount(
+        self, oauth_config_no_redirect: OAuthConfig, token_manager: TokenManager, state_serializer: StateSerializer
     ):
         """Test redirect URL inference for app mounted at prefix."""
         from frameio_kit._oauth import AdobeOAuthClient
@@ -194,6 +201,7 @@ class TestLoginEndpoint:
             client_id=oauth_config_no_redirect.client_id,
             client_secret=oauth_config_no_redirect.client_secret,
         )
+        sub_app.state.state_serializer = state_serializer
         auth_routes = create_auth_routes()
         sub_app.routes.extend(auth_routes)
 
@@ -209,9 +217,7 @@ class TestLoginEndpoint:
             state_param = [p for p in location.split("&") if p.startswith("state=")][0]
             state = state_param.split("=")[1]
 
-            state_key = f"oauth_state:{state}"
-            state_data = await token_manager.storage.get(state_key)
-            assert state_data is not None
+            state_data = state_serializer.loads(state)
             # For /frameio mount, path is /frameio/auth/login, mount_prefix is /frameio
             assert state_data["redirect_url"] == "https://testserver/frameio/auth/callback"
 
@@ -219,29 +225,20 @@ class TestLoginEndpoint:
 class TestCallbackEndpoint:
     """Test suite for callback endpoint."""
 
-    async def test_callback_success(self, client: TestClient, token_manager: TokenManager):
+    def test_callback_success(self, client: TestClient, state_serializer: StateSerializer):
         """Test successful OAuth callback."""
-        # Set up state in storage
-        state = "test_state_123"
-        state_key = f"oauth_state:{state}"
-        await token_manager.storage.put(
-            state_key,
+        # Create signed state token
+        state = state_serializer.dumps(
             {
                 "user_id": "user_123",
                 "interaction_id": None,
                 "redirect_url": "https://example.com/auth/callback",
-            },
-            ttl=600,
+            }
         )
 
         # Since we're not mocking the OAuth client, the token exchange will fail
         # The callback will attempt to make real HTTP requests to Adobe IMS
         response = client.get("/auth/callback", params={"code": "auth_code_123", "state": state})
-
-        # Without mocking, this will likely fail with 500 due to network error
-        # State should still be consumed even on error
-        state_data = await token_manager.storage.get(state_key)
-        assert state_data is None  # State is consumed regardless of outcome
 
         # The test verifies that the callback endpoint processes the request
         # even if the actual token exchange fails
@@ -273,24 +270,33 @@ class TestCallbackEndpoint:
         assert "Missing code or state parameter" in response.text
 
     def test_callback_invalid_state(self, client: TestClient):
-        """Test callback with invalid/unknown state."""
-        response = client.get("/auth/callback", params={"code": "auth_code", "state": "unknown_state"})
+        """Test callback with invalid/tampered state."""
+        response = client.get("/auth/callback", params={"code": "auth_code", "state": "invalid_token"})
 
         assert response.status_code == 400
-        assert "Invalid or Expired State" in response.text
+        assert "Invalid State" in response.text
 
-    async def test_callback_exchange_failure(self, client: TestClient, token_manager: TokenManager):
+    def test_callback_wrong_key_state(self, client: TestClient):
+        """Test callback with state token signed by wrong key."""
+        from itsdangerous import URLSafeTimedSerializer
+
+        # Create a state token signed with a different key - should be rejected
+        wrong_serializer = URLSafeTimedSerializer("wrong_key", salt="oauth-state")
+        state = wrong_serializer.dumps({"user_id": "user_123", "redirect_url": "https://example.com"})
+
+        response = client.get("/auth/callback", params={"code": "auth_code", "state": state})
+
+        assert response.status_code == 400
+        assert "Invalid State" in response.text
+
+    def test_callback_exchange_failure(self, client: TestClient, state_serializer: StateSerializer):
         """Test callback when token exchange fails."""
-        state = "test_state_123"
-        state_key = f"oauth_state:{state}"
-        await token_manager.storage.put(
-            state_key,
+        state = state_serializer.dumps(
             {
                 "user_id": "user_123",
                 "interaction_id": None,
                 "redirect_url": "https://example.com/auth/callback",
-            },
-            ttl=600,
+            }
         )
 
         response = client.get("/auth/callback", params={"code": "bad_code", "state": state})
@@ -299,8 +305,8 @@ class TestCallbackEndpoint:
         # Note: Without mocking, this will attempt real token exchange which will fail
         assert response.status_code in (200, 500)  # May succeed or fail depending on mock setup
 
-    async def test_callback_uses_stored_redirect_url(self, token_manager: TokenManager):
-        """Test that callback creates OAuth client with redirect URL from state."""
+    def test_callback_uses_embedded_redirect_url(self, token_manager: TokenManager, state_serializer: StateSerializer):
+        """Test that callback uses redirect URL from state token."""
         from frameio_kit._oauth import AdobeOAuthClient
 
         # Create app without explicit redirect_url
@@ -308,6 +314,7 @@ class TestCallbackEndpoint:
             client_id="test_client_id",
             client_secret="test_client_secret",
             redirect_url=None,
+            encryption_key=TEST_SECRET_KEY,
         )
 
         app = Starlette()
@@ -317,28 +324,25 @@ class TestCallbackEndpoint:
             client_id=oauth_config_no_redirect.client_id,
             client_secret=oauth_config_no_redirect.client_secret,
         )
+        app.state.state_serializer = state_serializer
         auth_routes = create_auth_routes()
         app.routes.extend(auth_routes)
 
-        # Set up state with a specific redirect_url
-        state = "test_state_456"
-        state_key = f"oauth_state:{state}"
+        # Create state with a specific redirect_url
         custom_redirect_url = "https://custom.example.com/my/path/auth/callback"
-        await token_manager.storage.put(
-            state_key,
+        state = state_serializer.dumps(
             {
                 "user_id": "user_456",
                 "interaction_id": None,
                 "redirect_url": custom_redirect_url,
-            },
-            ttl=600,
+            }
         )
 
         with TestClient(app) as test_client:
             # Make callback request
             response = test_client.get("/auth/callback", params={"code": "auth_code", "state": state})
 
-            # Callback should use the stored redirect_url
+            # Callback should use the embedded redirect_url
             # Response should attempt token exchange (will likely fail without mocking)
             assert response.status_code in (200, 500)
 

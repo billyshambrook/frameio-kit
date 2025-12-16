@@ -383,6 +383,7 @@ class App:
             app.state.token_manager = self._oauth_manager.token_manager
             app.state.oauth_config = self._oauth_config
             app.state.oauth_client = self._oauth_manager.oauth_client
+            app.state.state_serializer = self._oauth_manager.state_serializer
 
         yield
 
