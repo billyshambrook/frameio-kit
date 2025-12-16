@@ -1,24 +1,24 @@
 """OAuth authentication routes for Adobe IMS integration.
 
 This module provides OAuth 2.0 endpoints for the authorization code flow,
-including login initiation and callback handling with CSRF protection.
+including login initiation and callback handling using stateless signed tokens.
 """
 
 import logging
-import secrets
-from typing import Any, TypedDict, cast
+from typing import TypedDict
 
+from itsdangerous import BadSignature, SignatureExpired
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse
 from starlette.routing import Route
 
-from ._oauth import AdobeOAuthClient, OAuthConfig, TokenManager, get_oauth_redirect_url
+from ._oauth import AdobeOAuthClient, OAuthConfig, StateSerializer, TokenManager, get_oauth_redirect_url
 
 logger = logging.getLogger(__name__)
 
 
 class OAuthStateData(TypedDict):
-    """Typed dictionary for OAuth state data stored during auth flow.
+    """Typed dictionary for OAuth state data embedded in signed tokens.
 
     Attributes:
         user_id: Frame.io user ID initiating the auth flow.
@@ -41,9 +41,9 @@ async def _login_endpoint(request: Request) -> RedirectResponse | HTMLResponse:
     Returns:
         Redirect to Adobe IMS authorization page.
     """
-    # Get oauth config and token manager from app state
+    # Get oauth config from app state
     oauth_config: OAuthConfig = request.app.state.oauth_config
-    token_manager: TokenManager = request.app.state.token_manager
+    state_serializer: StateSerializer = request.app.state.state_serializer
 
     # Extract user context from query params
     user_id = request.query_params.get("user_id")
@@ -61,18 +61,13 @@ async def _login_endpoint(request: Request) -> RedirectResponse | HTMLResponse:
     # Get shared OAuth client from app state
     oauth_client: AdobeOAuthClient = request.app.state.oauth_client
 
-    # Generate CSRF state token
-    state = secrets.token_urlsafe(32)
-
-    # Store state in storage backend with 10-minute TTL (600 seconds)
-    # Include redirect_url so callback can use the same one
+    # Create signed state token with embedded data (stateless - no storage needed)
     state_data: OAuthStateData = {
         "user_id": user_id,
         "interaction_id": interaction_id,
         "redirect_url": redirect_url,
     }
-    state_key = f"oauth_state:{state}"
-    await token_manager.storage.put(state_key, cast(dict[str, Any], state_data), ttl=600)
+    state = state_serializer.dumps(state_data)
 
     # Redirect to Adobe OAuth
     auth_url = oauth_client.get_authorization_url(state, redirect_url)
@@ -84,14 +79,15 @@ async def _callback_endpoint(request: Request) -> HTMLResponse:
 
     Query parameters:
         code: Authorization code (present on success)
-        state: CSRF state token (required)
+        state: Signed state token (required)
         error: Error code (present on failure)
 
     Returns:
         HTML page with success or error message.
     """
-    # Get token manager from app state
+    # Get components from app state
     token_manager: TokenManager = request.app.state.token_manager
+    state_serializer: StateSerializer = request.app.state.state_serializer
 
     code = request.query_params.get("code")
     state = request.query_params.get("state")
@@ -105,7 +101,7 @@ async def _callback_endpoint(request: Request) -> HTMLResponse:
             <html>
             <head><title>Authentication Failed</title></head>
             <body>
-                <h1>❌ Authentication Failed</h1>
+                <h1>Authentication Failed</h1>
                 <p><strong>Error:</strong> {error}</p>
                 <p><strong>Description:</strong> {error_description}</p>
                 <p>Please close this window and try again.</p>
@@ -122,27 +118,37 @@ async def _callback_endpoint(request: Request) -> HTMLResponse:
             status_code=400,
         )
 
-    # Verify and retrieve state data from storage (CSRF protection)
-    state_key = f"oauth_state:{state}"
-    state_data: dict[str, Any] | None = await token_manager.storage.get(state_key)
-
-    if not state_data:
+    # Verify and decode state token (stateless - no storage lookup needed)
+    try:
+        state_data = state_serializer.loads(state)
+    except SignatureExpired:
         return HTMLResponse(
             """
             <html>
-            <head><title>Invalid State</title></head>
+            <head><title>Session Expired</title></head>
             <body>
-                <h1>❌ Invalid or Expired State</h1>
-                <p>The authentication state token is invalid or has expired.</p>
+                <h1>Session Expired</h1>
+                <p>The authentication session has expired.</p>
                 <p>Please close this window and try again.</p>
             </body>
             </html>
             """,
             status_code=400,
         )
-
-    # Delete state after retrieval (consume once)
-    await token_manager.storage.delete(state_key)
+    except BadSignature:
+        return HTMLResponse(
+            """
+            <html>
+            <head><title>Invalid State</title></head>
+            <body>
+                <h1>Invalid State</h1>
+                <p>The authentication state token is invalid.</p>
+                <p>Please close this window and try again.</p>
+            </body>
+            </html>
+            """,
+            status_code=400,
+        )
 
     user_id = state_data.get("user_id")
     redirect_url = state_data.get("redirect_url")
@@ -153,7 +159,7 @@ async def _callback_endpoint(request: Request) -> HTMLResponse:
             <html>
             <head><title>Invalid State Data</title></head>
             <body>
-                <h1>❌ Invalid State Data</h1>
+                <h1>Invalid State Data</h1>
                 <p>The authentication state is incomplete or corrupted.</p>
                 <p>Please close this window and try again.</p>
             </body>
@@ -161,6 +167,7 @@ async def _callback_endpoint(request: Request) -> HTMLResponse:
             """,
             status_code=400,
         )
+
     # Get shared OAuth client from app state
     oauth_client: AdobeOAuthClient = request.app.state.oauth_client
 
@@ -195,12 +202,10 @@ async def _callback_endpoint(request: Request) -> HTMLResponse:
                     }
                     h1 { color: #2d3748; margin: 0 0 1rem; }
                     p { color: #4a5568; line-height: 1.6; }
-                    .emoji { font-size: 4rem; margin-bottom: 1rem; }
                 </style>
             </head>
             <body>
                 <div class="container">
-                    <div class="emoji">✅</div>
                     <h1>Authentication Successful!</h1>
                     <p>You have successfully signed in with Adobe.</p>
                     <p>You can now close this window and return to Frame.io.</p>
@@ -219,7 +224,7 @@ async def _callback_endpoint(request: Request) -> HTMLResponse:
             <html>
             <head><title>Authentication Failed</title></head>
             <body>
-                <h1>❌ Authentication Failed</h1>
+                <h1>Authentication Failed</h1>
                 <p>An error occurred during authentication.</p>
                 <p>Please close this window and try again.</p>
             </body>

@@ -5,10 +5,14 @@ System (IMS), including authorization flow, token exchange, and automatic token 
 """
 
 import logging
+import os
+import secrets
 from datetime import datetime, timedelta
+from collections.abc import Mapping
 from typing import Any, Optional
 
 import httpx
+from itsdangerous import URLSafeTimedSerializer
 from key_value.aio.protocols import AsyncKeyValue
 from pydantic import BaseModel, Field
 
@@ -622,3 +626,76 @@ def get_oauth_redirect_url(oauth_config: OAuthConfig, request) -> str:
     if oauth_config.redirect_url:
         return oauth_config.redirect_url
     return infer_oauth_url(request, "/auth/callback")
+
+
+class StateSerializer:
+    """Stateless OAuth state token serializer using itsdangerous.
+
+    Creates signed, time-limited state tokens that embed the state data directly,
+    eliminating the need for server-side state storage during OAuth flows.
+
+    Key Loading Hierarchy:
+        1. Explicit key parameter (highest priority)
+        2. FRAMEIO_AUTH_ENCRYPTION_KEY environment variable
+        3. Raises ValueError (no fallback for security)
+
+    Example:
+        ```python
+        serializer = StateSerializer()
+
+        # Create state token with embedded data
+        state = serializer.dumps({"user_id": "123", "redirect_url": "https://..."})
+
+        # Later, verify and extract data (raises if expired/invalid)
+        data = serializer.loads(state, max_age=600)  # 10 minute max age
+        ```
+    """
+
+    def __init__(self, secret_key: str | None = None) -> None:
+        """Initialize the state serializer.
+
+        Args:
+            secret_key: Secret key for signing tokens. If not provided,
+                falls back to FRAMEIO_AUTH_ENCRYPTION_KEY environment variable.
+                If neither is set, generates an ephemeral key with a warning.
+        """
+        if secret_key:
+            key = secret_key
+        elif key_from_env := os.getenv("FRAMEIO_AUTH_ENCRYPTION_KEY"):
+            key = key_from_env
+        else:
+            # Generate ephemeral key with warning (matches TokenEncryption behavior)
+            logger.warning(
+                "No secret key configured for state serializer. "
+                "Using ephemeral key - OAuth state tokens will be invalid after restart. "
+                "Set FRAMEIO_AUTH_ENCRYPTION_KEY in production."
+            )
+            key = secrets.token_urlsafe(32)
+        self._serializer = URLSafeTimedSerializer(key, salt="oauth-state")
+
+    def dumps(self, data: Mapping[str, Any]) -> str:
+        """Create a signed state token containing the given data.
+
+        Args:
+            data: Dictionary or mapping of state data to embed in the token.
+
+        Returns:
+            URL-safe signed token string.
+        """
+        return self._serializer.dumps(dict(data))
+
+    def loads(self, token: str, max_age: int = 600) -> dict[str, Any]:
+        """Verify and extract data from a state token.
+
+        Args:
+            token: The signed state token.
+            max_age: Maximum age in seconds (default 600 = 10 minutes).
+
+        Returns:
+            The embedded state data dictionary.
+
+        Raises:
+            SignatureExpired: If the token has expired.
+            BadSignature: If the token signature is invalid.
+        """
+        return self._serializer.loads(token, max_age=max_age)
