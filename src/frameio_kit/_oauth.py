@@ -210,9 +210,7 @@ class AdobeOAuthClient:
         )
         return f"{self.authorization_url}?{params}"
 
-    def _parse_token_response(
-        self, response: dict[str, Any], fallback_refresh_token: str | None = None
-    ) -> TokenData:
+    def _parse_token_response(self, response: dict[str, Any], fallback_refresh_token: str | None = None) -> TokenData:
         """Parse and validate a token response from Adobe IMS.
 
         Args:

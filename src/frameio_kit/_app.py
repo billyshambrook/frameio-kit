@@ -494,9 +494,7 @@ class App:
         _user_token_context.set(user_token_data.access_token)
         return None
 
-    async def _resolve_secret(
-        self, handler_reg: _HandlerRegistration, event: WebhookEvent | ActionEvent
-    ) -> str:
+    async def _resolve_secret(self, handler_reg: _HandlerRegistration, event: WebhookEvent | ActionEvent) -> str:
         """Resolve the secret for signature verification.
 
         Args:
