@@ -6,7 +6,7 @@ including login initiation and callback handling with CSRF protection.
 
 import logging
 import secrets
-from typing import TypedDict
+from typing import Any, TypedDict, cast
 
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse
@@ -72,7 +72,7 @@ async def _login_endpoint(request: Request) -> RedirectResponse | HTMLResponse:
         "redirect_url": redirect_url,
     }
     state_key = f"oauth_state:{state}"
-    await token_manager.storage.put(state_key, state_data, ttl=600)
+    await token_manager.storage.put(state_key, cast(dict[str, Any], state_data), ttl=600)
 
     # Redirect to Adobe OAuth
     auth_url = oauth_client.get_authorization_url(state, redirect_url)
@@ -124,7 +124,7 @@ async def _callback_endpoint(request: Request) -> HTMLResponse:
 
     # Verify and retrieve state data from storage (CSRF protection)
     state_key = f"oauth_state:{state}"
-    state_data: OAuthStateData | None = await token_manager.storage.get(state_key)
+    state_data: dict[str, Any] | None = await token_manager.storage.get(state_key)
 
     if not state_data:
         return HTMLResponse(
