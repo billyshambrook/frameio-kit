@@ -103,10 +103,12 @@ class TestTokenEncryption:
 
             assert decrypted.user_id == sample_token_data.user_id
 
-    def test_ephemeral_key_generation_with_warning(self, sample_token_data: TokenData):
+    def test_ephemeral_key_generation_with_warning(self, sample_token_data: TokenData, caplog):
         """Test that ephemeral key is generated with warning when no key configured."""
+        import logging
+
         with patch.dict(os.environ, {}, clear=True):  # Clear all env vars
-            with pytest.warns(UserWarning, match="Using ephemeral key"):
+            with caplog.at_level(logging.WARNING, logger="frameio_kit._encryption"):
                 encryption = TokenEncryption()
 
                 # Should still work, just with ephemeral key
@@ -114,6 +116,9 @@ class TestTokenEncryption:
                 decrypted = encryption.decrypt(encrypted)
 
                 assert decrypted.user_id == sample_token_data.user_id
+
+            # Check that warning was logged
+            assert "ephemeral key" in caplog.text.lower()
 
     def test_encrypt_different_data_produces_different_output(self, encryption_key: str):
         """Test that encrypting different TokenData produces different encrypted output."""

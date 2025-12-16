@@ -4,14 +4,31 @@ This module provides OAuth 2.0 endpoints for the authorization code flow,
 including login initiation and callback handling with CSRF protection.
 """
 
+import logging
 import secrets
-from typing import Any
+from typing import TypedDict
 
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse
 from starlette.routing import Route
 
-from ._oauth import AdobeOAuthClient, TokenManager, get_oauth_redirect_url
+from ._oauth import AdobeOAuthClient, OAuthConfig, TokenManager, get_oauth_redirect_url
+
+logger = logging.getLogger(__name__)
+
+
+class OAuthStateData(TypedDict):
+    """Typed dictionary for OAuth state data stored during auth flow.
+
+    Attributes:
+        user_id: Frame.io user ID initiating the auth flow.
+        interaction_id: Optional interaction ID for multi-step flows.
+        redirect_url: OAuth redirect URL to use for the callback.
+    """
+
+    user_id: str
+    interaction_id: str | None
+    redirect_url: str
 
 
 async def _login_endpoint(request: Request) -> RedirectResponse | HTMLResponse:
@@ -24,8 +41,6 @@ async def _login_endpoint(request: Request) -> RedirectResponse | HTMLResponse:
     Returns:
         Redirect to Adobe IMS authorization page.
     """
-    from ._oauth import OAuthConfig
-
     # Get oauth config and token manager from app state
     oauth_config: OAuthConfig = request.app.state.oauth_config
     token_manager: TokenManager = request.app.state.token_manager
@@ -51,7 +66,7 @@ async def _login_endpoint(request: Request) -> RedirectResponse | HTMLResponse:
 
     # Store state in storage backend with 10-minute TTL (600 seconds)
     # Include redirect_url so callback can use the same one
-    state_data: dict[str, Any] = {
+    state_data: OAuthStateData = {
         "user_id": user_id,
         "interaction_id": interaction_id,
         "redirect_url": redirect_url,
@@ -109,7 +124,7 @@ async def _callback_endpoint(request: Request) -> HTMLResponse:
 
     # Verify and retrieve state data from storage (CSRF protection)
     state_key = f"oauth_state:{state}"
-    state_data: dict[str, Any] | None = await token_manager.storage.get(state_key)
+    state_data: OAuthStateData | None = await token_manager.storage.get(state_key)
 
     if not state_data:
         return HTMLResponse(
@@ -197,14 +212,15 @@ async def _callback_endpoint(request: Request) -> HTMLResponse:
             </html>
             """
         )
-    except Exception as e:
+    except Exception:
+        logger.exception("OAuth token exchange failed")
         return HTMLResponse(
-            f"""
+            """
             <html>
             <head><title>Authentication Failed</title></head>
             <body>
                 <h1>❌ Authentication Failed</h1>
-                <p><strong>Error:</strong> {str(e)}</p>
+                <p>An error occurred during authentication.</p>
                 <p>Please close this window and try again.</p>
             </body>
             </html>

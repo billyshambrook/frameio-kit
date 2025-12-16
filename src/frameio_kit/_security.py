@@ -46,7 +46,23 @@ async def verify_signature(headers: Headers, body: bytes, secret: str) -> bool:
 
     # 1. Verify timestamp to prevent replay attacks
     current_time = time.time()
-    if (current_time - int(req_timestamp_str)) > _TIMESTAMP_TOLERANCE_SECONDS:
+    try:
+        req_timestamp = int(req_timestamp_str)
+    except ValueError:
+        return False  # Invalid timestamp format
+
+    # Reject negative timestamps
+    if req_timestamp <= 0:
+        return False
+
+    time_diff = current_time - req_timestamp
+
+    # Reject timestamps too far in the past
+    if time_diff > _TIMESTAMP_TOLERANCE_SECONDS:
+        return False
+
+    # Reject timestamps too far in the future (clock skew protection)
+    if time_diff < -_TIMESTAMP_TOLERANCE_SECONDS:
         return False
 
     # 2. Compute the expected signature
