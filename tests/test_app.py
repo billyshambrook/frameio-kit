@@ -96,7 +96,7 @@ async def test_handle_request_returns_400_for_invalid_json():
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
         response = await client.post("/", content="not valid json")
         assert response.status_code == 400
-        assert "Invalid JSON payload" in response.text
+        assert "Invalid JSON" in response.text
 
 
 async def test_handle_request_returns_400_for_missing_type_field():
@@ -375,7 +375,7 @@ async def test_missing_timestamp_header_returns_400(webhook_payload, sample_secr
         response = await client.post("/", content=body, headers=headers)
         # Now returns 400 because timestamp header is required for event parsing
         assert response.status_code == 400
-        assert "Missing or invalid X-Frameio-Request-Timestamp header" in response.text
+        assert "Missing X-Frameio-Request-Timestamp header" in response.text
 
 
 # --- Secret Defaulting Tests ---
@@ -1060,8 +1060,9 @@ async def test_resolver_returning_empty_string_fails(webhook_payload, create_val
 
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
         response = await client.post("/", content=body, headers=headers)
-        assert response.status_code == 500
-        assert "Secret resolver returned empty value" in response.text
+        # 503 indicates configuration/service error
+        assert response.status_code == 503
+        assert "Configuration error" in response.text
 
     # Verify handler was NOT called
     assert len(call_log) == 0
@@ -1177,8 +1178,9 @@ async def test_resolver_error_handling(webhook_payload, create_valid_signature):
 
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
         response = await client.post("/", content=body, headers=headers)
-        assert response.status_code == 500
-        assert "Secret resolution failed" in response.text
+        # 503 indicates configuration/service error
+        assert response.status_code == 503
+        assert "Configuration error" in response.text
 
     # Verify handler was NOT called
     assert len(call_log) == 0

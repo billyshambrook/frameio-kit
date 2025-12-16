@@ -9,6 +9,16 @@ from ._app import (
 from ._client import Client
 from ._context import get_user_token
 from ._events import Account, ActionEvent, AnyEvent, Project, Resource, User, WebhookEvent, Workspace
+from ._exceptions import (
+    ConfigurationError,
+    EventValidationError,
+    FrameioKitError,
+    OAuthError,
+    SecretResolutionError,
+    SignatureVerificationError,
+    TokenExchangeError,
+    TokenRefreshError,
+)
 from ._middleware import Middleware, NextFunc
 from ._oauth import OAuthConfig
 from ._responses import (
@@ -46,6 +56,15 @@ __all__ = [
     "WebhookEvent",
     "Workspace",
     "AnyEvent",
+    # _exceptions.py
+    "ConfigurationError",
+    "EventValidationError",
+    "FrameioKitError",
+    "OAuthError",
+    "SecretResolutionError",
+    "SignatureVerificationError",
+    "TokenExchangeError",
+    "TokenRefreshError",
     # _middleware.py
     "Middleware",
     "NextFunc",

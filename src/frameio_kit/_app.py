@@ -32,14 +32,11 @@ Example:
 """
 
 import functools
-import json
 import logging
-import os
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import AsyncGenerator, Awaitable, Callable, Protocol, cast
+from typing import AsyncGenerator, Awaitable, Callable, cast
 
-from pydantic import ValidationError
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
@@ -49,12 +46,25 @@ from starlette.types import Receive, Scope, Send
 from ._auth_routes import create_auth_routes
 from ._client import Client
 from ._context import _user_token_context
-from ._encryption import TokenEncryption
 from ._events import ActionEvent, AnyEvent, WebhookEvent
+from ._exceptions import (
+    ConfigurationError,
+    EventValidationError,
+    SecretResolutionError,
+    SignatureVerificationError,
+)
 from ._middleware import Middleware
 from ._oauth import OAuthConfig, TokenManager, infer_oauth_url
+from ._oauth_manager import OAuthManager
+from ._request_handler import RequestHandler, parse_request
 from ._responses import AnyResponse, Form, Message
-from ._security import verify_signature
+from ._secret_resolver import (
+    ActionSecretResolver,
+    SecretResolverProtocol,
+    SecretResolutionStrategy,
+    WebhookSecretResolver,
+    resolve_secret_at_decorator_time,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -66,56 +76,8 @@ WebhookHandlerFunc = Callable[[WebhookEvent], Awaitable[None]]
 # It can return a Message, a Form for further input, or nothing.
 ActionHandlerFunc = Callable[[ActionEvent], Awaitable[AnyResponse]]
 
-# Type aliases for decorator-level secret resolvers
-WebhookSecretResolver = Callable[[WebhookEvent], Awaitable[str]]
-ActionSecretResolver = Callable[[ActionEvent], Awaitable[str]]
-
-
-class SecretResolver(Protocol):
-    """Protocol for app-level secret resolution.
-
-    Implement this protocol to provide dynamic secret resolution for both
-    webhooks and actions. Each method receives the specific event type it
-    handles, allowing for context-aware secret lookup (e.g., from a database).
-
-    Example:
-        ```python
-        class DatabaseSecretResolver:
-            def __init__(self, db):
-                self.db = db
-
-            async def get_webhook_secret(self, event: WebhookEvent) -> str:
-                return await self.db.webhooks.get_secret(event.account_id)
-
-            async def get_action_secret(self, event: ActionEvent) -> str:
-                return await self.db.actions.get_secret(event.resource.id)
-
-        resolver = DatabaseSecretResolver(db)
-        app = App(secret_resolver=resolver)
-        ```
-    """
-
-    async def get_webhook_secret(self, event: WebhookEvent) -> str:
-        """Resolve secret for webhook events.
-
-        Args:
-            event: The webhook event being processed.
-
-        Returns:
-            The secret to use for signature verification.
-        """
-        ...
-
-    async def get_action_secret(self, event: ActionEvent) -> str:
-        """Resolve secret for action events.
-
-        Args:
-            event: The action event being processed.
-
-        Returns:
-            The secret to use for signature verification.
-        """
-        ...
+# Re-export for backwards compatibility
+SecretResolver = SecretResolverProtocol
 
 
 @dataclass
@@ -148,7 +110,7 @@ class App:
         self,
         *,
         token: str | None = None,
-        middleware: list[Middleware] = [],
+        middleware: list[Middleware] | None = None,
         oauth: OAuthConfig | None = None,
         secret_resolver: SecretResolver | None = None,
     ) -> None:
@@ -178,37 +140,13 @@ class App:
         self._webhook_handlers: dict[str, _HandlerRegistration] = {}
         self._action_handlers: dict[str, _HandlerRegistration] = {}
 
-        # Initialize OAuth components if configured
-        self._token_manager: TokenManager | None = None
-        self._oauth_client: "AdobeOAuthClient | None" = None
+        # Initialize OAuth manager if configured
+        self._oauth_manager: OAuthManager | None = None
         if self._oauth_config:
-            # Use provided storage or default to MemoryStore
-            storage = self._oauth_config.storage
-            if storage is None:
-                from key_value.aio.stores.memory import MemoryStore
+            self._oauth_manager = OAuthManager(self._oauth_config)
 
-                storage = MemoryStore()
-
-            encryption = TokenEncryption(key=self._oauth_config.encryption_key)
-            self._token_manager = TokenManager(
-                storage=storage,
-                encryption=encryption,
-                client_id=self._oauth_config.client_id,
-                client_secret=self._oauth_config.client_secret,
-                scopes=self._oauth_config.scopes,
-                http_client=self._oauth_config.http_client,
-                token_refresh_buffer_seconds=self._oauth_config.token_refresh_buffer_seconds,
-            )
-
-            # Create a shared OAuth client for auth routes to reuse
-            from ._oauth import AdobeOAuthClient
-
-            self._oauth_client = AdobeOAuthClient(
-                client_id=self._oauth_config.client_id,
-                client_secret=self._oauth_config.client_secret,
-                scopes=self._oauth_config.scopes,
-                http_client=self._oauth_config.http_client,
-            )
+        # Request handler for parsing and validation
+        self._request_handler = RequestHandler()
 
         self._asgi_app = self._create_asgi_app()
 
@@ -265,64 +203,36 @@ class App:
         Raises:
             RuntimeError: If OAuth was not configured during App initialization.
         """
-        if not self._token_manager:
+        if not self._oauth_manager:
             raise RuntimeError("Cannot access token manager. OAuth not configured in App initialization.")
-        return self._token_manager
+        return self._oauth_manager.token_manager
 
-    def _resolve_secret_at_decorator_time(
-        self,
-        secret: str | WebhookSecretResolver | ActionSecretResolver | None,
-        env_var_name: str,
-        handler_type: str,
-    ) -> tuple[str | None, WebhookSecretResolver | ActionSecretResolver | None]:
-        """Resolve secret configuration at decorator registration time.
+    def validate_configuration(self) -> list[str]:
+        """Check configuration is valid before accepting requests.
 
-        Implements the precedence chain:
-        1. Explicit secret parameter (non-empty string or resolver callable)
-        2. App-level secret resolver (if configured)
-        3. Environment variable
-        4. Fail with ValueError
-
-        Args:
-            secret: Secret string, resolver callable, or None.
-            env_var_name: Name of environment variable to fall back to
-                (e.g., "WEBHOOK_SECRET").
-            handler_type: Type of handler for error messages
-                (e.g., "Webhook", "Custom action").
+        This method validates that all registered handlers have valid
+        configurations and that OAuth is properly set up for handlers
+        that require user authentication.
 
         Returns:
-            Tuple of (static_secret, decorator_resolver):
-            - static_secret: String to use for signature verification, or None
-              if using a resolver.
-            - decorator_resolver: Callable resolver function, or None if using
-              static secret or app-level resolver.
+            List of configuration error messages. Empty list if valid.
 
-        Raises:
-            ValueError: If no secret source is available.
+        Example:
+            ```python
+            errors = app.validate_configuration()
+            if errors:
+                for error in errors:
+                    print(f"Configuration error: {error}")
+                sys.exit(1)
+            ```
         """
-        if secret is not None:
-            if isinstance(secret, str):
-                if secret:  # Non-empty string
-                    # Explicit static secret provided
-                    return (secret, None)
-                # Empty string falls through to app resolver / env var
-            else:
-                # Decorator-level resolver provided
-                return (None, secret)
+        errors: list[str] = []
 
-        # secret is None or empty string - check app resolver
-        if self._secret_resolver is not None:
-            # Use app-level resolver (resolved at request time in _handle_request)
-            return (None, None)
-        else:
-            # Fall back to environment variable
-            resolved_secret = os.getenv(env_var_name)
-            if not resolved_secret:
-                raise ValueError(
-                    f"{handler_type} secret must be provided either via 'secret' parameter, "
-                    f"app-level secret_resolver, or {env_var_name} environment variable"
-                )
-            return (resolved_secret, None)
+        for event_type, reg in self._action_handlers.items():
+            if reg.require_user_auth and not self._oauth_manager:
+                errors.append(f"Action '{event_type}' requires user auth but OAuth not configured")
+
+        return errors
 
     def on_webhook(self, event_type: str | list[str], secret: str | WebhookSecretResolver | None = None):
         """Decorator to register a function as a webhook event handler.
@@ -372,7 +282,9 @@ class App:
         """
 
         def decorator(func: WebhookHandlerFunc):
-            static_secret, resolver = self._resolve_secret_at_decorator_time(secret, "WEBHOOK_SECRET", "Webhook")
+            static_secret, resolver = resolve_secret_at_decorator_time(
+                secret, "WEBHOOK_SECRET", "Webhook", self._secret_resolver
+            )
 
             events = [event_type] if isinstance(event_type, str) else event_type
             for event in events:
@@ -443,8 +355,8 @@ class App:
         """
 
         def decorator(func: ActionHandlerFunc):
-            static_secret, resolver = self._resolve_secret_at_decorator_time(
-                secret, "CUSTOM_ACTION_SECRET", "Custom action"
+            static_secret, resolver = resolve_secret_at_decorator_time(
+                secret, "CUSTOM_ACTION_SECRET", "Custom action", self._secret_resolver
             )
 
             self._action_handlers[event_type] = _HandlerRegistration(
@@ -467,25 +379,39 @@ class App:
             _ = self.client  # Initialize the client
 
         # Store OAuth components in app state for route access
-        if self._token_manager and self._oauth_config:
-            app.state.token_manager = self._token_manager
+        if self._oauth_manager and self._oauth_config:
+            app.state.token_manager = self._oauth_manager.token_manager
             app.state.oauth_config = self._oauth_config
-            app.state.oauth_client = self._oauth_client
+            app.state.oauth_client = self._oauth_manager.oauth_client
 
         yield
 
-        if self._api_client:
-            await self._api_client.close()
+        # Cleanup resources with error handling for each
+        cleanup_errors: list[Exception] = []
 
-        if self._oauth_client:
-            await self._oauth_client.close()
+        if self._api_client:
+            try:
+                await self._api_client.close()
+            except Exception as e:
+                logger.exception("Error closing API client")
+                cleanup_errors.append(e)
+
+        if self._oauth_manager:
+            try:
+                await self._oauth_manager.close()
+            except Exception as e:
+                logger.exception("Error closing OAuth manager")
+                cleanup_errors.append(e)
+
+        if cleanup_errors:
+            logger.warning("Encountered %d error(s) during cleanup", len(cleanup_errors))
 
     def _create_asgi_app(self) -> Starlette:
         """Builds the Starlette ASGI application with routes and lifecycle hooks."""
         routes = [Route("/", self._handle_request, methods=["POST"])]
 
         # Add OAuth routes if configured
-        if self._token_manager:
+        if self._oauth_manager:
             auth_routes = create_auth_routes()
             routes.extend(auth_routes)
 
@@ -512,7 +438,8 @@ class App:
         from ._responses import LinkField
 
         # Build login URL with user context
-        assert self._oauth_config is not None, "OAuth config must be set to create login form"
+        if self._oauth_config is None:
+            raise RuntimeError("OAuth config must be set to create login form")
 
         # Infer login URL from request (handles mount prefix correctly)
         login_url_base = infer_oauth_url(request, "/auth/login")
@@ -552,13 +479,13 @@ class App:
             Login Form if user needs to authenticate, None if authenticated.
 
         Raises:
-            RuntimeError: If OAuth not configured but auth required.
+            ConfigurationError: If OAuth not configured but auth required.
         """
-        if not self._token_manager:
-            raise RuntimeError("User authentication required but OAuth not configured.")
+        if not self._oauth_manager:
+            raise ConfigurationError("User authentication required but OAuth not configured.")
 
         # Check if user has a valid token
-        user_token_data = await self._token_manager.get_token(event.user_id)
+        user_token_data = await self._oauth_manager.token_manager.get_token(event.user_id)
         if not user_token_data:
             # User not authenticated - return login form
             return self._create_login_form(event, request)
@@ -567,81 +494,64 @@ class App:
         _user_token_context.set(user_token_data.access_token)
         return None
 
+    async def _resolve_secret(self, handler_reg: _HandlerRegistration, event: WebhookEvent | ActionEvent) -> str:
+        """Resolve the secret for signature verification.
+
+        Args:
+            handler_reg: The handler registration with secret configuration.
+            event: The parsed event.
+
+        Returns:
+            The resolved secret string.
+
+        Raises:
+            SecretResolutionError: If secret resolution fails.
+        """
+        strategy = SecretResolutionStrategy(
+            static_secret=handler_reg.secret,
+            decorator_resolver=handler_reg.secret_resolver,
+            app_resolver=self._secret_resolver,
+        )
+        return await strategy.resolve(event)
+
     async def _handle_request(self, request: Request) -> Response:
-        """The main ASGI request handler, refactored for clarity."""
+        """The main ASGI request handler."""
         body = await request.body()
+
+        # Parse request
         try:
-            payload = json.loads(body)
-            event_type = payload.get("type")
-        except (json.JSONDecodeError, AttributeError):
-            return Response("Invalid JSON payload.", status_code=400)
+            parsed = parse_request(body, request.headers)
+        except ValueError as e:
+            return Response(str(e), status_code=400)
 
-        if not event_type:
-            return Response("Payload missing 'type' field.", status_code=400)
+        event_type = parsed.event_type
 
+        # Find handler
         handler_reg = self._find_handler(event_type)
         if not handler_reg:
             return Response(f"No handler registered for event type '{event_type}'.", status_code=404)
 
-        # Extract timestamp from headers and add to payload before validation
-        # This is required for event parsing
+        # Validate event
         try:
-            payload["timestamp"] = int(request.headers["X-Frameio-Request-Timestamp"])
-        except (KeyError, ValueError):
-            return Response("Missing or invalid X-Frameio-Request-Timestamp header.", status_code=400)
+            event = self._request_handler.validate(parsed.payload, handler_reg.model)
+        except EventValidationError as e:
+            logger.warning("Event validation failed: %s", e)
+            return Response("Payload validation error.", status_code=422)
 
-        # Parse event object - needed for secret resolvers
+        # Resolve secret
         try:
-            event = handler_reg.model.model_validate(payload)
-        except ValidationError as e:
-            return Response(f"Payload validation error: {e}", status_code=422)
+            resolved_secret = await self._resolve_secret(handler_reg, event)
+        except SecretResolutionError as e:
+            logger.error("Secret resolution failed for event '%s': %s", event_type, e)
+            return Response("Configuration error.", status_code=503)
 
-        # Resolve secret using precedence chain
-        resolved_secret: str
-        if handler_reg.secret:
-            # Static secret from decorator
-            resolved_secret = handler_reg.secret
-        elif handler_reg.secret_resolver:
-            # Decorator-level resolver
-            try:
-                # Type narrowing: resolver type matches event type
-                if isinstance(event, WebhookEvent):
-                    # handler_reg.secret_resolver must be WebhookSecretResolver
-                    webhook_resolver = cast(WebhookSecretResolver, handler_reg.secret_resolver)
-                    resolved_secret = await webhook_resolver(event)
-                elif isinstance(event, ActionEvent):
-                    # handler_reg.secret_resolver must be ActionSecretResolver
-                    action_resolver = cast(ActionSecretResolver, handler_reg.secret_resolver)
-                    resolved_secret = await action_resolver(event)
-                else:
-                    return Response("Unknown event type for secret resolution.", status_code=500)
-            except Exception:
-                logger.exception("Error resolving secret with decorator resolver")
-                return Response("Secret resolution failed.", status_code=500)
-        elif self._secret_resolver:
-            # App-level resolver
-            try:
-                if isinstance(event, WebhookEvent):
-                    resolved_secret = await self._secret_resolver.get_webhook_secret(event)
-                elif isinstance(event, ActionEvent):
-                    resolved_secret = await self._secret_resolver.get_action_secret(event)
-                else:
-                    return Response("Unknown event type for secret resolution.", status_code=500)
-            except Exception:
-                logger.exception("Error resolving secret with app-level resolver")
-                return Response("Secret resolution failed.", status_code=500)
-        else:
-            # This should never happen due to decorator validation
-            return Response("No secret configured.", status_code=500)
-
-        # Validate resolved secret is not empty
-        if not resolved_secret:
-            return Response("Secret resolver returned empty value.", status_code=500)
-
-        # Verify signature with resolved secret
-        if not await verify_signature(request.headers, body, resolved_secret):
+        # Verify signature
+        try:
+            await self._request_handler.verify(request.headers, body, resolved_secret)
+        except SignatureVerificationError:
             return Response("Invalid signature.", status_code=401)
 
+        # Process event
         try:
             # Check user authentication if required
             if handler_reg.require_user_auth:
@@ -658,16 +568,16 @@ class App:
             handler_with_middleware = self._build_middleware_chain(final_handler)
             response_data = await handler_with_middleware(event)
 
-            if isinstance(response_data, Message) or isinstance(response_data, Form):
+            if isinstance(response_data, (Message, Form)):
                 return JSONResponse(response_data.model_dump(exclude_none=True))
 
             return Response("OK", status_code=200)
 
-        except RuntimeError as e:
-            # OAuth configuration errors
-            return Response(str(e), status_code=500)
+        except ConfigurationError as e:
+            logger.error("Configuration error processing event '%s': %s", event_type, e)
+            return Response("Configuration error.", status_code=503)
         except Exception:
-            logger.exception(f"Error processing event '{event_type}'")
+            logger.exception("Error processing event '%s'", event_type)
             return Response("Internal Server Error", status_code=500)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send):

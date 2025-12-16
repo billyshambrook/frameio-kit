@@ -76,7 +76,145 @@ Adherence to this stack is mandatory. Do not introduce new tools without a forma
    * For every bug fix, add a regression test that fails before the fix and passes after.  
    * Use pytest.mark.asyncio for all async test functions.  
 4. **Commits**: Write clear, concise commit messages that explain the *why* behind a change, not just the *what*.  
-5. **Pull Requests**:  
-   * A PR should address a single, focused issue.  
-   * The description should clearly explain the changes and link to any relevant issue trackers.  
+5. **Pull Requests**:
+   * A PR should address a single, focused issue.
+   * The description should clearly explain the changes and link to any relevant issue trackers.
    * Ensure all CI checks (linting, type checking, testing) are passing before requesting a review.
+
+## **🏛️ Module Architecture**
+
+The SDK follows a modular architecture with clear separation of concerns:
+
+| Module | Purpose |
+|--------|---------|
+| `_app.py` | Main application class (orchestration only) |
+| `_exceptions.py` | Custom exception hierarchy |
+| `_secret_resolver.py` | Secret resolution strategy |
+| `_oauth_manager.py` | OAuth component lifecycle |
+| `_request_handler.py` | Request parsing, validation, verification |
+| `_events.py` | Event models (WebhookEvent, ActionEvent) |
+| `_responses.py` | UI response models (Message, Form, fields) |
+| `_middleware.py` | Middleware base class |
+| `_security.py` | Signature verification |
+| `_oauth.py` | OAuth client and token management |
+| `_encryption.py` | Token encryption |
+| `_client.py` | Frame.io API client |
+| `_context.py` | Request context management |
+| `_auth_routes.py` | OAuth authentication routes |
+
+### Design Principles
+
+1. **Single Responsibility**: Each module should have one clear purpose
+2. **Extract, Don't Expand**: When a class grows too large, extract focused classes
+3. **Use Custom Exceptions**: Prefer specific exception types over generic ones
+4. **Fail Fast**: Validate at startup when possible, not at request time
+
+## **⚠️ Common Pitfalls to Avoid**
+
+### Never Use Mutable Default Arguments
+```python
+# Bad
+def __init__(self, middleware: list[Middleware] = []):
+    self._middleware = middleware
+
+# Good
+def __init__(self, middleware: list[Middleware] | None = None):
+    self._middleware = middleware or []
+```
+
+### Never Use `assert` in Production Code
+```python
+# Bad
+assert self._config is not None, "Config required"
+
+# Good
+if self._config is None:
+    raise RuntimeError("Config required")
+```
+
+### Use TypedDict for Structured Dictionaries
+```python
+# Bad
+state_data: dict[str, Any] = {"user_id": user_id}
+
+# Good
+class OAuthStateData(TypedDict):
+    user_id: str
+    interaction_id: str | None
+    redirect_url: str
+
+state_data: OAuthStateData = {"user_id": user_id, ...}
+```
+
+### Never Expose Exception Details to Users
+```python
+# Bad
+except Exception as e:
+    return Response(f"Error: {str(e)}", status_code=500)
+
+# Good
+except Exception:
+    logger.exception("OAuth token exchange failed")
+    return Response("An error occurred", status_code=500)
+```
+
+### Handle Each Resource Cleanup Independently
+```python
+# Bad - if first fails, second never runs
+if self._api_client:
+    await self._api_client.close()
+if self._oauth_manager:
+    await self._oauth_manager.close()
+
+# Good - both always attempted
+cleanup_errors = []
+for client in [self._api_client, self._oauth_manager]:
+    if client:
+        try:
+            await client.close()
+        except Exception as e:
+            logger.exception("Error closing client")
+            cleanup_errors.append(e)
+```
+
+### Validate Timestamps in Both Directions
+```python
+# Bad - only checks past
+if (current_time - timestamp) > TOLERANCE:
+    return False
+
+# Good - checks past and future
+time_diff = current_time - timestamp
+if abs(time_diff) > TOLERANCE:
+    return False
+```
+
+### Use Logger, Not Warnings
+```python
+# Bad
+import warnings
+warnings.warn("Using ephemeral key", UserWarning)
+
+# Good
+import logging
+logger = logging.getLogger(__name__)
+logger.warning("Using ephemeral key - tokens will be lost on restart")
+```
+
+### Keep Imports at Top of File
+Move imports to the top unless there's a specific reason (circular imports, conditional dependencies).
+
+## **🔐 Exception Hierarchy**
+
+```
+FrameioKitError (base)
+├── SecretResolutionError
+├── SignatureVerificationError
+├── EventValidationError
+├── ConfigurationError
+└── OAuthError
+    ├── TokenExchangeError
+    └── TokenRefreshError
+```
+
+All public exceptions should be exported from `__init__.py` to allow users to handle specific error cases.

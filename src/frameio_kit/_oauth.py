@@ -4,14 +4,22 @@ This module provides OAuth 2.0 authentication support for Adobe Identity Managem
 System (IMS), including authorization flow, token exchange, and automatic token refresh.
 """
 
+import logging
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Any, Optional
 
 import httpx
 from key_value.aio.protocols import AsyncKeyValue
 from pydantic import BaseModel, Field
 
 from ._encryption import TokenEncryption
+from ._exceptions import TokenExchangeError, TokenRefreshError
+
+logger = logging.getLogger(__name__)
+
+# Default token expiration time (in seconds) when 'expires_in' is missing from
+# token response. Adobe IMS tokens typically expire in 1 hour (3600 seconds).
+DEFAULT_TOKEN_EXPIRES_SECONDS = 3600
 
 
 class TokenData(BaseModel):
@@ -206,6 +214,55 @@ class AdobeOAuthClient:
         )
         return f"{self.authorization_url}?{params}"
 
+    def _parse_token_response(self, response: dict[str, Any], fallback_refresh_token: str | None = None) -> TokenData:
+        """Parse and validate a token response from Adobe IMS.
+
+        Args:
+            response: The JSON response from the token endpoint.
+            fallback_refresh_token: Refresh token to use if not in response
+                (for token refresh where new refresh token may not be returned).
+
+        Returns:
+            Validated TokenData.
+
+        Raises:
+            TokenExchangeError: If required fields are missing or invalid.
+        """
+        # Validate access_token
+        access_token = response.get("access_token")
+        if not access_token:
+            raise TokenExchangeError("Missing 'access_token' in token response")
+
+        # Validate refresh_token
+        refresh_token = response.get("refresh_token") or fallback_refresh_token
+        if not refresh_token:
+            raise TokenExchangeError("Missing 'refresh_token' in token response")
+
+        # Validate expires_in
+        expires_in = response.get("expires_in")
+        if expires_in is None:
+            logger.warning("Missing 'expires_in' in token response, defaulting to %d", DEFAULT_TOKEN_EXPIRES_SECONDS)
+            expires_in = DEFAULT_TOKEN_EXPIRES_SECONDS
+        try:
+            expires_in = int(expires_in)
+        except (TypeError, ValueError):
+            raise TokenExchangeError(f"Invalid 'expires_in' value: {expires_in}")
+        if expires_in <= 0:
+            raise TokenExchangeError(f"'expires_in' must be positive, got: {expires_in}")
+
+        # Parse scopes from space-separated string. Filter empty strings to handle
+        # edge cases like extra whitespace or empty scope responses from the API.
+        scope_str = response.get("scope", "")
+        scopes = [s for s in scope_str.split() if s]
+
+        return TokenData(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            expires_at=datetime.now() + timedelta(seconds=expires_in),
+            scopes=scopes,
+            user_id="",  # Will be set by TokenManager
+        )
+
     async def exchange_code(self, code: str, redirect_uri: str) -> TokenData:
         """Exchange authorization code for access and refresh tokens.
 
@@ -217,7 +274,8 @@ class AdobeOAuthClient:
             TokenData containing access token, refresh token, and metadata.
 
         Raises:
-            httpx.HTTPStatusError: If token exchange fails.
+            TokenExchangeError: If token response validation fails.
+            httpx.HTTPStatusError: If HTTP request fails.
 
         Example:
             ```python
@@ -241,13 +299,7 @@ class AdobeOAuthClient:
         response.raise_for_status()
 
         token_response = response.json()
-        return TokenData(
-            access_token=token_response["access_token"],
-            refresh_token=token_response["refresh_token"],
-            expires_at=datetime.now() + timedelta(seconds=token_response["expires_in"]),
-            scopes=token_response.get("scope", "").split(),
-            user_id="",  # Will be set by TokenManager
-        )
+        return self._parse_token_response(token_response)
 
     async def refresh_token(self, refresh_token: str) -> TokenData:
         """Refresh access token using refresh token.
@@ -259,7 +311,8 @@ class AdobeOAuthClient:
             TokenData with new access token and updated expiration.
 
         Raises:
-            httpx.HTTPStatusError: If token refresh fails (e.g., revoked token).
+            TokenExchangeError: If token response validation fails.
+            httpx.HTTPStatusError: If HTTP request fails (e.g., revoked token).
 
         Example:
             ```python
@@ -278,13 +331,9 @@ class AdobeOAuthClient:
         response.raise_for_status()
 
         token_response = response.json()
-        return TokenData(
-            access_token=token_response["access_token"],
-            refresh_token=token_response.get("refresh_token", refresh_token),  # May not return new one
-            expires_at=datetime.now() + timedelta(seconds=token_response["expires_in"]),
-            scopes=token_response.get("scope", "").split(),
-            user_id="",  # Will be set by TokenManager
-        )
+        # Pass the current refresh_token as fallback since refresh responses
+        # may not include a new refresh_token
+        return self._parse_token_response(token_response, fallback_refresh_token=refresh_token)
 
     async def close(self) -> None:
         """Close HTTP client and cleanup resources.
@@ -299,16 +348,6 @@ class AdobeOAuthClient:
         """
         if self._owns_http_client:
             await self._http.aclose()
-
-
-class TokenRefreshError(Exception):
-    """Raised when token refresh fails.
-
-    This typically indicates the refresh token has been revoked or expired,
-    requiring the user to re-authenticate.
-    """
-
-    pass
 
 
 class TokenManager:

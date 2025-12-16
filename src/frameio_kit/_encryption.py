@@ -5,14 +5,16 @@ Encryption keys can be provided explicitly, loaded from environment variables,
 or generated ephemerally with warnings.
 """
 
+import logging
 import os
-import warnings
 from typing import TYPE_CHECKING
 
 from cryptography.fernet import Fernet
 
 if TYPE_CHECKING:
     from ._oauth import TokenData
+
+logger = logging.getLogger(__name__)
 
 
 class TokenEncryption:
@@ -83,12 +85,10 @@ class TokenEncryption:
             self._key = key_from_env.encode()
         else:
             # Generate ephemeral key with warning
-            warnings.warn(
+            logger.warning(
                 "No encryption key configured. "
                 "Using ephemeral key - tokens will be lost on restart. "
-                "Set FRAMEIO_AUTH_ENCRYPTION_KEY in production.",
-                UserWarning,
-                stacklevel=2,
+                "Set FRAMEIO_AUTH_ENCRYPTION_KEY in production."
             )
             self._key = Fernet.generate_key()
 
