@@ -51,7 +51,6 @@ class AppManifest(BaseModel):
         name: App name.
         description: App description.
         icon_url: Optional URL to app icon.
-        base_url: Base URL of the app.
         actions: List of custom actions to install.
         webhooks: List of webhooks to install.
     """
@@ -59,7 +58,6 @@ class AppManifest(BaseModel):
     name: str
     description: str
     icon_url: str | None = None
-    base_url: str
     actions: list[ActionManifestItem] = Field(default_factory=list)
     webhooks: list[WebhookManifestItem] = Field(default_factory=list)
 
@@ -69,7 +67,6 @@ class AppManifest(BaseModel):
         app: "App",
         app_name: str,
         app_description: str,
-        base_url: str,
         icon_url: str | None = None,
         include_actions: list[str] | None = None,
         include_webhooks: list[str] | None = None,
@@ -128,7 +125,6 @@ class AppManifest(BaseModel):
             name=app_name,
             description=app_description,
             icon_url=icon_url,
-            base_url=base_url,
             actions=actions,
             webhooks=webhooks,
         )

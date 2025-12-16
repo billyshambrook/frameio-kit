@@ -319,7 +319,6 @@ class App:
         Raises:
             RuntimeError: If installation was not configured during App initialization.
         """
-        from ._install_manager import InstallationManager
 
         if not self._installation_manager:
             raise RuntimeError("Cannot access installation manager. Installation not configured in App initialization.")
@@ -531,7 +530,6 @@ class App:
         # Store installation manager in app state for route access
         if self._installation_manager and self._oauth_config:
             app.state.install_manager = self._installation_manager
-            app.state.install_base_url = self._oauth_config.base_url
 
         yield
 

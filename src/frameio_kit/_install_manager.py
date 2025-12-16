@@ -83,7 +83,6 @@ class InstallationManager:
                 app=self.app,
                 app_name=self.app._installation_config.app_name,
                 app_description=self.app._installation_config.app_description,
-                base_url=self.app._oauth_config.base_url,
                 icon_url=self.app._installation_config.app_icon_url,
                 include_actions=self.app._installation_config.include_actions,
                 include_webhooks=self.app._installation_config.include_webhooks,
@@ -117,6 +116,7 @@ class InstallationManager:
         user_id: str,
         user_token: str,
         workspace_ids: list[str],
+        base_url: str,
         force_update: bool = False,
     ) -> InstallationResult:
         """Install or update app in one or more workspaces.
@@ -125,6 +125,7 @@ class InstallationManager:
             user_id: Frame.io user ID performing the installation.
             user_token: OAuth access token for API calls.
             workspace_ids: List of workspace IDs to install to.
+            base_url: Base URL of the app.
             force_update: If True, reinstall even if already installed.
 
         Returns:
@@ -145,6 +146,7 @@ class InstallationManager:
                         user_id=user_id,
                         workspace_id=workspace_id,
                         force_update=force_update,
+                        base_url=base_url,
                     )
                     result.workspace_results[workspace_id] = True
                 except Exception as e:
@@ -175,6 +177,7 @@ class InstallationManager:
         exp_client: AsyncFrameioExperimental,
         user_id: str,
         workspace_id: str,
+        base_url: str,
         force_update: bool = False,
     ) -> None:
         """Install or update app in a single workspace.
@@ -184,6 +187,7 @@ class InstallationManager:
             exp_client: Experimental API client for custom actions.
             user_id: User performing installation.
             workspace_id: Workspace to install to.
+            base_url: Base URL of the app.
             force_update: If True, reinstall even if already installed and up to date.
         """
         logger.info("Installing app to workspace %s", workspace_id)
@@ -238,12 +242,14 @@ class InstallationManager:
                         name=action_manifest.name,
                         description=action_manifest.description,
                         event=action_manifest.event_type,
-                        url=self.manifest.base_url.rstrip("/"),
+                        url=base_url.rstrip("/"),
                     ),
                 )
 
                 # Frame.io generates the secret server-side
-                action_secret = getattr(action.data, "signing_secret", None) or getattr(action.data, "secret", None) or ""
+                action_secret = (
+                    getattr(action.data, "signing_secret", None) or getattr(action.data, "secret", None) or ""
+                )
 
                 if not action_secret:
                     logger.warning("No secret returned for action %s", action_manifest.event_type)
@@ -277,13 +283,15 @@ class InstallationManager:
                 workspace_id=workspace_id,
                 data=WebhookCreateParamsData(
                     name=webhook_manifest.description,
-                    url=self.manifest.base_url.rstrip("/"),
+                    url=base_url.rstrip("/"),
                     events=webhook_manifest.event_types,
                 ),
             )
 
             # Frame.io generates the secret server-side
-            webhook_secret = getattr(webhook.data, "secret", None) or getattr(webhook.data, "signing_secret", None) or ""
+            webhook_secret = (
+                getattr(webhook.data, "secret", None) or getattr(webhook.data, "signing_secret", None) or ""
+            )
 
             if not webhook_secret:
                 logger.warning("No secret returned for webhook")
@@ -414,9 +422,7 @@ class InstallationManager:
             await self._store_installation(installation)
 
             # Provide detailed error message
-            failure_summary = "; ".join(
-                f"{res_type} {res_id}: {error}" for res_type, res_id, error in failed_deletions
-            )
+            failure_summary = "; ".join(f"{res_type} {res_id}: {error}" for res_type, res_id, error in failed_deletions)
             logger.error(
                 "Failed to delete %d resources from workspace %s: %s",
                 len(failed_deletions),

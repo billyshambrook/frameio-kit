@@ -13,7 +13,7 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse
 from starlette.routing import Route
 
-from ._oauth import AdobeOAuthClient, TokenManager, get_oauth_redirect_url
+from ._oauth import AdobeOAuthClient, TokenManager, get_oauth_redirect_url, infer_oauth_url
 
 logger = logging.getLogger(__name__)
 
@@ -142,8 +142,7 @@ async def _callback_endpoint(request: Request) -> HTMLResponse | RedirectRespons
     state_ip = state_data.get("ip")
     if state_ip and request_ip and state_ip != request_ip:
         logger.warning(
-            "OAuth state token used from different IP: %s (state) vs %s (request). "
-            "Possible token fixation attack.",
+            "OAuth state token used from different IP: %s (state) vs %s (request). Possible token fixation attack.",
             state_ip,
             request_ip,
         )
@@ -155,7 +154,9 @@ async def _callback_endpoint(request: Request) -> HTMLResponse | RedirectRespons
 
     try:
         # Exchange code for tokens
-        token_data = await oauth_client.exchange_code(code)
+        token_data = await request.app.state.oauth_client.exchange_code(
+            code, get_oauth_redirect_url(request.app.state.oauth_config, request)
+        )
 
         # Check if this is an installation flow
         if state_data.get("flow") == "installation":
@@ -184,8 +185,8 @@ async def _callback_endpoint(request: Request) -> HTMLResponse | RedirectRespons
             )
 
             # Redirect to workspace selection
-            base_url: str = request.app.state.install_base_url
-            return RedirectResponse(f"{base_url}/install/workspaces?session={install_session_id}")
+            install_base_url: str = infer_oauth_url(request, "/install/workspaces")
+            return RedirectResponse(f"{install_base_url}?session={install_session_id}")
 
         # Regular auth flow - user_id is required
         user_id = state_data.get("user_id")

@@ -18,10 +18,9 @@ from ._install_manager import InstallationManager
 from ._install_ui import (
     render_install_page,
     render_manage_page,
-    render_success_page,
     render_workspace_selection,
 )
-from ._oauth import AdobeOAuthClient, TokenManager
+from ._oauth import AdobeOAuthClient, TokenManager, get_oauth_redirect_url, infer_oauth_url
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +29,9 @@ OAUTH_STATE_TTL = 600  # 10 minutes
 INSTALL_SESSION_TTL = 600  # 10 minutes
 
 # UUID v4 pattern for workspace ID validation
-WORKSPACE_ID_PATTERN = re.compile(r"^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$", re.IGNORECASE)
+WORKSPACE_ID_PATTERN = re.compile(
+    r"^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$", re.IGNORECASE
+)
 
 
 async def _install_landing_page(request: Request) -> HTMLResponse:
@@ -41,7 +42,7 @@ async def _install_landing_page(request: Request) -> HTMLResponse:
     """
     # Get installation manager from app state
     install_manager: InstallationManager = request.app.state.install_manager
-    base_url: str = request.app.state.install_base_url
+    base_url: str = infer_oauth_url(request, "")
 
     html = render_install_page(install_manager.manifest, base_url)
     return HTMLResponse(html)
@@ -73,7 +74,9 @@ async def _install_oauth_login(request: Request) -> RedirectResponse | HTMLRespo
     await token_manager.storage.put(state_key, state_data, ttl=OAUTH_STATE_TTL)
 
     # Redirect to Adobe OAuth
-    auth_url = oauth_client.get_authorization_url(state)
+    auth_url = oauth_client.get_authorization_url(
+        state, get_oauth_redirect_url(request.app.state.oauth_config, request)
+    )
     return RedirectResponse(auth_url)
 
 
@@ -126,11 +129,13 @@ async def _install_workspace_selection(request: Request) -> HTMLResponse:
                     else:
                         status = "update_available"
 
-                workspaces.append({
-                    "id": ws.id,
-                    "name": ws.name,
-                    "status": status,
-                })
+                workspaces.append(
+                    {
+                        "id": ws.id,
+                        "name": ws.name,
+                        "status": status,
+                    }
+                )
 
     finally:
         await client.close()
@@ -140,7 +145,7 @@ async def _install_workspace_selection(request: Request) -> HTMLResponse:
     await token_manager.storage.put(session_key, session_data, ttl=INSTALL_SESSION_TTL)
 
     # Render selection page
-    base_url: str = request.app.state.install_base_url
+    base_url: str = infer_oauth_url(request, "")
     html = render_workspace_selection(workspaces, base_url, session_id)
     return HTMLResponse(html)
 
@@ -198,7 +203,9 @@ async def _install_process(request: Request) -> HTMLResponse:
 
     # Determine which workspaces to install and uninstall
     to_install = [ws_id for ws_id in selected_workspace_ids if ws_id in all_workspace_ids]
-    to_uninstall = [ws_id for ws_id in currently_installed_ids if ws_id in all_workspace_ids and ws_id not in selected_workspace_ids]
+    to_uninstall = [
+        ws_id for ws_id in currently_installed_ids if ws_id in all_workspace_ids and ws_id not in selected_workspace_ids
+    ]
 
     # Combined results
     install_results = {}
@@ -212,6 +219,7 @@ async def _install_process(request: Request) -> HTMLResponse:
             user_id=user_id,
             user_token=access_token,
             workspace_ids=to_install,
+            base_url=infer_oauth_url(request, ""),
         )
         install_results = install_result.workspace_results
         install_errors = install_result.errors
@@ -222,6 +230,7 @@ async def _install_process(request: Request) -> HTMLResponse:
             user_id=user_id,
             user_token=access_token,
             workspace_ids=to_uninstall,
+            base_url=infer_oauth_url(request, ""),
         )
         uninstall_results = uninstall_result.workspace_results
         uninstall_errors = uninstall_result.errors
@@ -231,6 +240,7 @@ async def _install_process(request: Request) -> HTMLResponse:
 
     # Render results
     from ._install_ui import render_process_results_page
+
     html = render_process_results_page(
         install_results=install_results,
         install_errors=install_errors,
@@ -260,7 +270,7 @@ async def _install_manage(request: Request) -> HTMLResponse:
     installations = await install_manager.list_installations(user_id)
 
     # Render manage page with user_id
-    base_url: str = request.app.state.install_base_url
+    base_url: str = infer_oauth_url(request, "")
     html = render_manage_page(installations, base_url, user_id)
     return HTMLResponse(html)
 
@@ -299,9 +309,9 @@ async def _install_uninstall(request: Request) -> Response:
     )
 
     # Redirect back to manage page
-    base_url: str = request.app.state.install_base_url
+    base_url: str = infer_oauth_url(request, "/install/manage")
     if result.success:
-        return RedirectResponse(f"{base_url}/install/manage?user_id={user_id}")
+        return RedirectResponse(f"{base_url}?user_id={user_id}")
     else:
         error_msg = result.errors.get(workspace_id, "Unknown error")
         return HTMLResponse(f"<h1>Uninstall Failed</h1><p>{error_msg}</p>", status_code=500)
