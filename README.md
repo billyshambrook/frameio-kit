@@ -121,9 +121,9 @@ Contributions are the heart of open source! We welcome improvements, bug fixes, 
    source .venv/bin/activate  # or activate via your IDE
    ```
 
-3. **Install pre-commit hooks**:
+3. **Install prek hooks**:
    ```bash
-   uv run pre-commit install
+   uv run prek install
    ```
 
 ### 🧪 Development Workflow
@@ -135,7 +135,7 @@ uv run pytest
 
 **Run code quality checks:**
 ```bash
-uv run pre-commit run --all-files
+uv run prek run --all-files
 ```
 
 **Build documentation:**
@@ -148,7 +148,7 @@ uv run mkdocs serve
 1. **Fork** the repository on GitHub
 2. **Create** a feature branch from `main`
 3. **Make** your changes with tests and documentation
-4. **Ensure** all tests and pre-commit hooks pass
+4. **Ensure** all tests and prek hooks pass
 5. **Commit** your changes with a clear message
 6. **Push** to your fork and open a pull request
 

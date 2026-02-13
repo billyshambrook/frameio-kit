@@ -73,7 +73,7 @@ class TestMemoryStorageIntegration:
         key = "user:test_123"
 
         # Encrypt token
-        encrypted = encryption.encrypt(sample_token_data)
+        encrypted = encryption.encrypt(sample_token_data.model_dump_json().encode())
         wrapped = _wrap_encrypted_bytes(encrypted)
 
         # Store
@@ -85,7 +85,7 @@ class TestMemoryStorageIntegration:
 
         # Decrypt and verify
         unwrapped = _unwrap_encrypted_bytes(retrieved)
-        decrypted = encryption.decrypt(unwrapped)
+        decrypted = TokenData.model_validate_json(encryption.decrypt(unwrapped))
 
         assert decrypted.user_id == sample_token_data.user_id
         assert decrypted.access_token == sample_token_data.access_token
@@ -104,7 +104,7 @@ class TestMemoryStorageIntegration:
                 scopes=["openid"],
                 user_id=user,
             )
-            encrypted = encryption.encrypt(token_data)
+            encrypted = encryption.encrypt(token_data.model_dump_json().encode())
             wrapped = _wrap_encrypted_bytes(encrypted)
             await memory_storage.put(f"user:{user}", wrapped)
 
@@ -113,7 +113,7 @@ class TestMemoryStorageIntegration:
             retrieved = await memory_storage.get(f"user:{user}")
             assert retrieved is not None
             unwrapped = _unwrap_encrypted_bytes(retrieved)
-            decrypted = encryption.decrypt(unwrapped)
+            decrypted = TokenData.model_validate_json(encryption.decrypt(unwrapped))
             assert decrypted.access_token == f"{user}_access"
 
     async def test_ttl_expiration(self, memory_storage: MemoryStorage):
@@ -164,8 +164,9 @@ class TestEncryptionWithStorage:
         encryption2 = TokenEncryption(key=key2)
 
         # Encrypt with both keys
-        encrypted1 = encryption1.encrypt(sample_token_data)
-        encrypted2 = encryption2.encrypt(sample_token_data)
+        token_bytes = sample_token_data.model_dump_json().encode()
+        encrypted1 = encryption1.encrypt(token_bytes)
+        encrypted2 = encryption2.encrypt(token_bytes)
 
         # Should be different
         assert encrypted1 != encrypted2
@@ -187,8 +188,8 @@ class TestEncryptionWithStorage:
         unwrapped1 = _unwrap_encrypted_bytes(retrieved1)
         unwrapped2 = _unwrap_encrypted_bytes(retrieved2)
 
-        decrypted1 = encryption1.decrypt(unwrapped1)
-        decrypted2 = encryption2.decrypt(unwrapped2)
+        decrypted1 = TokenData.model_validate_json(encryption1.decrypt(unwrapped1))
+        decrypted2 = TokenData.model_validate_json(encryption2.decrypt(unwrapped2))
 
         # Both should decrypt to the same original data
         assert decrypted1.user_id == decrypted2.user_id == sample_token_data.user_id

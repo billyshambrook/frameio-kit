@@ -51,11 +51,10 @@ class DynamoDBStorage:
             boto_session_kwargs: Optional extra kwargs passed to ``aioboto3.Session()``.
         """
         try:
-            import aioboto3  # pyrefly: ignore[missing-import]
+            import aioboto3  # pyright: ignore[reportMissingImports]
         except ImportError:
             raise ImportError(
-                "aioboto3 is required for DynamoDBStorage. "
-                "Install it with: pip install aioboto3"
+                "aioboto3 is required for DynamoDBStorage. Install it with: pip install aioboto3"
             ) from None
 
         self._table_name = table_name

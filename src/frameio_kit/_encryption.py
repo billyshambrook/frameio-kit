@@ -7,21 +7,15 @@ or generated ephemerally with warnings.
 
 import logging
 import os
-from typing import TYPE_CHECKING
-
 from cryptography.fernet import Fernet
-
-if TYPE_CHECKING:
-    from ._oauth import TokenData
 
 logger = logging.getLogger(__name__)
 
 
 class TokenEncryption:
-    """Encrypts and decrypts OAuth tokens using Fernet symmetric encryption.
+    """Encrypts and decrypts data using Fernet symmetric encryption.
 
-    This class provides secure encryption/decryption of TokenData objects for
-    storage. It supports multiple key sources with a clear hierarchy to balance
+    Supports multiple key sources with a clear hierarchy to balance
     security and developer experience.
 
     Key Loading Hierarchy:
@@ -35,16 +29,9 @@ class TokenEncryption:
 
     Example:
         ```python
-        # Production: Use environment variable
-        os.environ["FRAMEIO_AUTH_ENCRYPTION_KEY"] = TokenEncryption.generate_key()
         encryption = TokenEncryption()
-
-        # Encrypt token data
-        token_data = TokenData(...)
-        encrypted_bytes = encryption.encrypt(token_data)
-
-        # Decrypt token data
-        decrypted_token = encryption.decrypt(encrypted_bytes)
+        encrypted = encryption.encrypt(b"secret data")
+        decrypted = encryption.decrypt(encrypted)
         ```
 
     Warning:
@@ -94,70 +81,30 @@ class TokenEncryption:
 
         self._fernet = Fernet(self._key)
 
-    def encrypt(self, token_data: "TokenData") -> bytes:
-        """Encrypt token data to bytes for secure storage.
-
-        Serializes the TokenData to JSON and encrypts it using Fernet symmetric
-        encryption. The resulting bytes can be safely stored in any backend.
+    def encrypt(self, data: bytes) -> bytes:
+        """Encrypt bytes using Fernet symmetric encryption.
 
         Args:
-            token_data: The TokenData object to encrypt.
+            data: The plaintext bytes to encrypt.
 
         Returns:
             Encrypted bytes suitable for storage.
-
-        Raises:
-            Exception: If encryption fails (e.g., invalid Fernet key).
-
-        Example:
-            ```python
-            token_data = TokenData(
-                access_token="eyJhbGc...",
-                refresh_token="def50200...",
-                expires_at=datetime.now() + timedelta(hours=24),
-                scopes=["openid", "AdobeID"],
-                user_id="user_123"
-            )
-
-            encrypted = encryption.encrypt(token_data)
-            # Store encrypted bytes in database, Redis, etc.
-            await storage.set("user:123", encrypted)
-            ```
         """
-        json_data = token_data.model_dump_json()
-        return self._fernet.encrypt(json_data.encode())
+        return self._fernet.encrypt(data)
 
-    def decrypt(self, encrypted_data: bytes) -> "TokenData":
-        """Decrypt bytes to TokenData object.
-
-        Decrypts Fernet-encrypted bytes and deserializes the JSON to a TokenData
-        object with full validation.
+    def decrypt(self, encrypted_data: bytes) -> bytes:
+        """Decrypt Fernet-encrypted bytes.
 
         Args:
             encrypted_data: The encrypted bytes from storage.
 
         Returns:
-            Decrypted and validated TokenData object.
+            Decrypted plaintext bytes.
 
         Raises:
             cryptography.fernet.InvalidToken: If decryption fails (wrong key or corrupted data).
-            pydantic.ValidationError: If the decrypted data is not valid TokenData.
-
-        Example:
-            ```python
-            # Retrieve encrypted bytes from storage
-            encrypted = await storage.get("user:123")
-
-            if encrypted:
-                token_data = encryption.decrypt(encrypted)
-                print(f"Access token: {token_data.access_token}")
-                print(f"Expires: {token_data.expires_at}")
-            ```
         """
-        from ._oauth import TokenData
-
-        decrypted = self._fernet.decrypt(encrypted_data)
-        return TokenData.model_validate_json(decrypted)
+        return self._fernet.decrypt(encrypted_data)
 
     @staticmethod
     def generate_key() -> str:

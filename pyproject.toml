@@ -53,8 +53,8 @@ dev = [
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.6.21",
     "mkdocstrings-python>=1.18.2",
-    "pre-commit>=4.3.0",
-    "pyrefly>=0.35.0",
+    "basedpyright>=1.38.0",
+    "prek>=0.3.0",
     "pytest>=8.4.2",
     "pytest-asyncio>=1.2.0",
     "pytest-xdist>=3.8.0",
@@ -75,8 +75,11 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
 
-[tool.pyrefly]
-project-includes = ["src"]
+[tool.basedpyright]
+typeCheckingMode = "standard"
+include = ["src"]
+venvPath = "."
+venv = ".venv"
 
 [tool.ruff]
 line-length = 120

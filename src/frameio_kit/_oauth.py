@@ -504,7 +504,8 @@ class TokenManager:
             return None
 
         encrypted = self._unwrap_encrypted_bytes(encrypted_dict)
-        token_data = self.encryption.decrypt(encrypted)
+        decrypted = self.encryption.decrypt(encrypted)
+        token_data = TokenData.model_validate_json(decrypted)
 
         # Check if needs refresh using configured buffer
         if token_data.is_expired(buffer_seconds=self.token_refresh_buffer_seconds):
@@ -535,7 +536,7 @@ class TokenManager:
         token_data.user_id = user_id
         key = self._make_key(user_id)
 
-        encrypted = self.encryption.encrypt(token_data)
+        encrypted = self.encryption.encrypt(token_data.model_dump_json().encode())
         wrapped = self._wrap_encrypted_bytes(encrypted)
 
         # TTL: token lifetime + 1 day buffer for refresh

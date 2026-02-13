@@ -28,12 +28,10 @@ repos:
       # Run the formatter.
       - id: ruff-format
 
-  - repo: https://github.com/facebook/pyrefly-pre-commit
-    rev: 0.0.1
+  - repo: https://github.com/DetachHead/basedpyright-prek-mirror
+    rev: 1.38.0
     hooks:
-      - id: pyrefly-typecheck-system
-        name: Pyrefly (type checking)
-        pass_filenames: true # Recomended to do full repo checks. However, you can change this to `true` to only check changed files
+      - id: basedpyright
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
