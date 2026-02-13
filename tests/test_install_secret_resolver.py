@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from frameio_kit._encryption import TokenEncryption
-from frameio_kit._events import ActionEvent, WebhookEvent
+from frameio_kit._events import Account, ActionEvent, Project, Resource, User, WebhookEvent, Workspace
 from frameio_kit._exceptions import InstallationNotFoundError
 from frameio_kit._install_config import InstallConfig
 from frameio_kit._install_manager import InstallationManager
@@ -36,12 +36,12 @@ def resolver(manager):
 
 def _make_webhook_event(account_id: str, workspace_id: str, event_type: str = "file.ready") -> WebhookEvent:
     return WebhookEvent(
-        account={"id": account_id},
-        project={"id": "proj-1"},
-        resource={"id": "res-1", "type": "file"},
+        account=Account(id=account_id),
+        project=Project(id="proj-1"),
+        resource=Resource(id="res-1", type="file"),
         type=event_type,
-        user={"id": "user-1"},
-        workspace={"id": workspace_id},
+        user=User(id="user-1"),
+        workspace=Workspace(id=workspace_id),
         timestamp=1234567890,
     )
 
@@ -51,11 +51,11 @@ def _make_action_event(account_id: str, workspace_id: str, event_type: str = "my
         account_id=account_id,
         action_id="act-1",
         interaction_id="int-1",
-        project={"id": "proj-1"},
-        resource={"id": "res-1", "type": "file"},
+        project=Project(id="proj-1"),
+        resource=Resource(id="res-1", type="file"),
         type=event_type,
-        user={"id": "user-1"},
-        workspace={"id": workspace_id},
+        user=User(id="user-1"),
+        workspace=Workspace(id=workspace_id),
         timestamp=1234567890,
     )
 
