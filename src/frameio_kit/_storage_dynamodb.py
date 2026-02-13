@@ -28,17 +28,18 @@ class DynamoDBStorage:
         ```python
         from frameio_kit._storage_dynamodb import DynamoDBStorage
 
-        storage = DynamoDBStorage(
-            table_name="frameio-oauth-tokens",
-            region_name="us-east-1",
-        )
+        # Uses boto3 default region resolution
+        storage = DynamoDBStorage(table_name="frameio-oauth-tokens")
+
+        # Or specify a region explicitly
+        storage = DynamoDBStorage(table_name="frameio-oauth-tokens", region_name="us-east-1")
         ```
     """
 
     def __init__(
         self,
         table_name: str,
-        region_name: str,
+        region_name: str | None = None,
         endpoint_url: str | None = None,
         boto_session_kwargs: dict[str, Any] | None = None,
     ) -> None:
@@ -46,7 +47,9 @@ class DynamoDBStorage:
 
         Args:
             table_name: Name of the DynamoDB table.
-            region_name: AWS region (e.g. ``"us-east-1"``).
+            region_name: AWS region (e.g. ``"us-east-1"``). Defaults to the
+                boto3 default region from environment variables, AWS config
+                files, or instance metadata.
             endpoint_url: Optional endpoint URL (useful for local DynamoDB).
             boto_session_kwargs: Optional extra kwargs passed to ``aioboto3.Session()``.
         """
@@ -63,9 +66,9 @@ class DynamoDBStorage:
         self._session = aioboto3.Session(**(boto_session_kwargs or {}))
 
     def _resource_kwargs(self) -> dict[str, Any]:
-        kwargs: dict[str, Any] = {
-            "region_name": self._region_name,
-        }
+        kwargs: dict[str, Any] = {}
+        if self._region_name is not None:
+            kwargs["region_name"] = self._region_name
         if self._endpoint_url is not None:
             kwargs["endpoint_url"] = self._endpoint_url
         return kwargs

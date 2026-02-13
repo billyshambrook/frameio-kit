@@ -166,10 +166,7 @@ app = App(
 ```python
 from frameio_kit import DynamoDBStorage
 
-storage = DynamoDBStorage(
-    table_name="frameio-installations",
-    region_name="us-east-1",
-)
+storage = DynamoDBStorage(table_name="frameio-app-data")
 
 app = App(
     oauth=OAuthConfig(..., storage=storage),

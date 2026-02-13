@@ -140,10 +140,7 @@ app = App(
         client_secret=os.environ["ADOBE_CLIENT_SECRET"],
         redirect_url="https://yourapp.com/auth/callback",  # Explicit for proxy
         scopes=["openid", "AdobeID", "frameio.api"],
-        storage=DynamoDBStorage(
-            table_name="frameio-oauth-tokens",
-            region_name="us-east-1",
-        ),
+        storage=DynamoDBStorage(table_name="frameio-app-data"),
         encryption_key=os.environ["FRAMEIO_AUTH_ENCRYPTION_KEY"],
     )
 )
@@ -172,10 +169,7 @@ from frameio_kit import DynamoDBStorage
 app = App(
     oauth=OAuthConfig(
         ...,
-        storage=DynamoDBStorage(
-            table_name="frameio-oauth-tokens",
-            region_name="us-east-1",
-        ),
+        storage=DynamoDBStorage(table_name="frameio-app-data"),
     )
 )
 ```
