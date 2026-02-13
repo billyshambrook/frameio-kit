@@ -37,7 +37,8 @@ def get_user_token() -> str:
             token = get_user_token()
 
             # Use it with the built-in Client
-            user_client = Client(token=token)
+            async with Client(token=token) as user_client:
+                ...
 
             # Or pass to other services
             await external_service.authenticate(token)

@@ -15,7 +15,7 @@ app = App()
 async def on_file_ready(event: WebhookEvent):
     print(f"File is ready!")
 
-@app.on_action("my_app.analyze", "Analyze File", "Analyze this file", "your-secret")
+@app.on_action("my_app.analyze", name="Analyze File", description="Analyze this file", secret="your-secret")
 async def analyze_file(event: ActionEvent):
     return Message(title="Analysis Complete", description="File analyzed successfully!")
 ```
@@ -65,25 +65,30 @@ async def analyze_file(event: ActionEvent):
 
 ### **File Processing Pipeline**
 ```python
+from frameio import CreateCommentParamsData
+
 @app.on_webhook("file.ready", secret=os.environ["WEBHOOK_SECRET"])
 async def process_file(event: WebhookEvent):
     # Get file details
-    file = await app.client.files.get(event.resource_id)
-    
+    file = await app.client.files.show(
+        account_id=event.account_id,
+        file_id=event.resource_id,
+    )
+
     # Process the file
     result = await my_processing_service.process(file)
-    
+
     # Add a comment back to Frame.io
     await app.client.comments.create(
         account_id=event.account_id,
         file_id=event.resource_id,
-        data={"text": f"Processing complete! Result: {result}"}
+        data=CreateCommentParamsData(text=f"Processing complete! Result: {result}")
     )
 ```
 
 ### **Interactive Custom Action**
 ```python
-@app.on_action("asset.publish", "Publish Asset", "Publish to social media", os.environ["ACTION_SECRET"])
+@app.on_action("asset.publish", name="Publish Asset", description="Publish to social media", secret=os.environ["ACTION_SECRET"])
 async def publish_asset(event: ActionEvent):
     if event.data:
         # Form was submitted
@@ -98,9 +103,10 @@ async def publish_asset(event: ActionEvent):
     # Show the form
     return Form(
         title="Publish to Social Media",
+        description="Choose where to publish:",
         fields=[
             SelectField(label="Platform", name="platform", options=PLATFORMS),
-            TextField(label="Caption", name="caption", placeholder="Enter your caption...")
+            TextField(label="Caption", name="caption", value="Enter your caption...")
         ]
     )
 ```

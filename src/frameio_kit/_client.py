@@ -49,7 +49,18 @@ class Client(AsyncFrameio):
             httpx_client=self._httpx_client,
         )
 
+    @property
+    def experimental(self) -> AsyncFrameioExperimental:
+        """Provides access to experimental API endpoints that are in beta or under development."""
+        return self._experimental
+
     async def close(self) -> None:
         """Gracefully closes the underlying `httpx.AsyncClient` session."""
         if not self._httpx_client.is_closed:
             await self._httpx_client.aclose()
+
+    async def __aenter__(self) -> "Client":
+        return self
+
+    async def __aexit__(self, *args: object) -> None:
+        await self.close()

@@ -22,6 +22,7 @@ from ._exceptions import (
 from ._middleware import Middleware, NextFunc
 from ._oauth import OAuthConfig
 from ._storage import MemoryStorage, Storage
+from ._storage_dynamodb import DynamoDBStorage
 from ._responses import (
     AnyResponse,
     CheckboxField,
@@ -74,6 +75,8 @@ __all__ = [
     # _storage.py
     "MemoryStorage",
     "Storage",
+    # _storage_dynamodb.py
+    "DynamoDBStorage",
     # _responses.py
     "AnyResponse",
     "CheckboxField",

@@ -14,9 +14,7 @@ Example:
     import os
 
     import uvicorn
-    from frameio_kit.app import App
-    from frameio_kit.events import WebhookEvent
-    from frameio_kit.ui import Message
+    from frameio_kit import App, WebhookEvent, Message
 
     # Initialize the app, optionally with a token for API calls
     app = App(token=os.getenv("FRAMEIO_TOKEN"))
@@ -114,7 +112,7 @@ class App:
         oauth: OAuthConfig | None = None,
         secret_resolver: SecretResolver | None = None,
     ) -> None:
-        """Initializes the FrameApp.
+        """Initializes the App.
 
         Args:
             token: An optional access token obtained from the Adobe Developer
@@ -171,7 +169,7 @@ class App:
             An instance of Frame.io `Client`, ready to make authenticated requests.
 
         Raises:
-            RuntimeError: If the `App` was initialized without an `token`.
+            RuntimeError: If the `App` was initialized without a `token`.
         """
         if not self._token:
             raise RuntimeError("Cannot access API client. `token` was not provided to App.")
@@ -239,8 +237,7 @@ class App:
 
         This decorator registers an asynchronous function to be called whenever
         Frame.io sends a webhook event of the specified type(s). A webhook
-        handler can only receive `WebhookEvent` and can only return a `Message`
-        or `None`.
+        A webhook handler receives a `WebhookEvent` and must return `None`.
 
         Example:
             ```python
@@ -298,10 +295,10 @@ class App:
     def on_action(
         self,
         event_type: str,
+        *,
         name: str,
         description: str,
         secret: str | ActionSecretResolver | None = None,
-        *,
         require_user_auth: bool = False,
     ):
         """Decorator to register a function as a custom action handler.
@@ -317,7 +314,7 @@ class App:
             app = App()
 
             # Using explicit secret string
-            @app.on_action(event_type="my_app.transcribe", name="Transcribe", description="Transcribe file", secret="your-secret")
+            @app.on_action("my_app.transcribe", name="Transcribe", description="Transcribe file", secret="your-secret")
             async def on_transcribe(event: ActionEvent):
                 pass
 
@@ -325,12 +322,12 @@ class App:
             async def resolve_secret(event: ActionEvent) -> str:
                 return await db.get_secret(event.resource.id)
 
-            @app.on_action(event_type="my_app.convert", name="Convert", description="Convert file", secret=resolve_secret)
+            @app.on_action("my_app.convert", name="Convert", description="Convert file", secret=resolve_secret)
             async def on_convert(event: ActionEvent):
                 pass
 
             # Using CUSTOM_ACTION_SECRET environment variable
-            @app.on_action(event_type="my_app.process", name="Process", description="Process file")
+            @app.on_action("my_app.process", name="Process", description="Process file")
             async def on_process(event: ActionEvent):
                 pass
             ```
@@ -417,7 +414,7 @@ class App:
             routes.extend(auth_routes)
 
         return Starlette(
-            debug=True,
+            debug=False,
             routes=routes,
             lifespan=self._lifespan,
         )
@@ -569,7 +566,9 @@ class App:
             handler_with_middleware = self._build_middleware_chain(final_handler)
             response_data = await handler_with_middleware(event)
 
-            if isinstance(response_data, (Message, Form)):
+            # Webhook handlers are fire-and-forget; ignore any return value.
+            is_webhook = event_type in self._webhook_handlers
+            if not is_webhook and isinstance(response_data, (Message, Form)):
                 return JSONResponse(response_data.model_dump(exclude_none=True))
 
             return Response("OK", status_code=200)

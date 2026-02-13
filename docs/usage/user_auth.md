@@ -63,18 +63,16 @@ async def process_file(event: ActionEvent):
     token = get_user_token()
 
     # Create client with user's token
-    user_client = Client(token=token)
+    async with Client(token=token) as user_client:
+        # Fetch the authenticated user's profile
+        profile = await user_client.users.show()
 
-    # Fetch the authenticated user's profile
-    profile = await user_client.users.show()
+        # Make API calls as the user
+        file = await user_client.files.show(
+            account_id=event.account_id,
+            file_id=event.resource_id
+        )
 
-    # Make API calls as the user
-    file = await user_client.files.show(
-        account_id=event.account_id,
-        file_id=event.resource_id
-    )
-
-    await user_client.close()
     return Message(
         title="File Processed",
         description=f"Processed {file.data.name} as {profile.data.name}"
@@ -134,7 +132,7 @@ Make sure to consider [mounting](mounting.md) when setting the `redirect_url`.
 ### Complete Example
 
 ```python
-from frameio_kit._storage_dynamodb import DynamoDBStorage
+from frameio_kit import DynamoDBStorage
 
 app = App(
     oauth=OAuthConfig(
@@ -169,7 +167,7 @@ app = App(oauth=OAuthConfig(...))
 Tokens shared via AWS DynamoDB:
 
 ```python
-from frameio_kit._storage_dynamodb import DynamoDBStorage
+from frameio_kit import DynamoDBStorage
 
 app = App(
     oauth=OAuthConfig(
@@ -274,9 +272,8 @@ async def admin_action(event: ActionEvent):
 # User authentication
 @app.on_action(..., require_user_auth=True)
 async def user_action(event: ActionEvent):
-    user_client = Client(token=get_user_token())
-    await user_client.files.show(...)
-    await user_client.close()
+    async with Client(token=get_user_token()) as user_client:
+        await user_client.files.show(...)
 ```
 
 ## Troubleshooting

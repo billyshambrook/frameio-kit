@@ -50,7 +50,7 @@ frameio_app = App()
 async def on_file_ready(event: WebhookEvent):
     print(f"File {event.resource_id} is ready!")
 
-@frameio_app.on_action("my_app.process", "Process", "Process this file")
+@frameio_app.on_action("my_app.process", name="Process", description="Process this file")
 async def process_file(event: ActionEvent):
     return Message(title="Processing", description="File is being processed")
 

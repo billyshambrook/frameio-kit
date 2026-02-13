@@ -14,7 +14,7 @@ async def on_file_ready(event: WebhookEvent):
     print(f"File {event.resource_id} is ready!")
 
 # Single action - uses CUSTOM_ACTION_SECRET env var
-@app.on_action("my_app.analyze", "Analyze File", "Analyze this file")
+@app.on_action("my_app.analyze", name="Analyze File", description="Analyze this file")
 async def analyze_file(event: ActionEvent):
     return Message(title="Analysis Complete", description="File analyzed successfully!")
 
@@ -71,7 +71,7 @@ CUSTOM_ACTION_SECRET=your-action-secret-here
 ```python
 # No secret parameter needed
 @app.on_webhook("file.ready")
-@app.on_action("my_app.process", "Process", "Process file")
+@app.on_action("my_app.process", name="Process", description="Process file")
 ```
 
 ### Multiple Actions/Webhooks (Different Secrets)
@@ -90,8 +90,8 @@ import os
 
 @app.on_webhook("file.ready", secret=os.environ["WEBHOOK_FILES"])
 @app.on_webhook("comment.created", secret=os.environ["WEBHOOK_COMMENTS"])
-@app.on_action("my_app.analyze", "Analyze", "Analyze file", secret=os.environ["CUSTOM_ACTION_ANALYZE"])
-@app.on_action("my_app.publish", "Publish", "Publish file", secret=os.environ["CUSTOM_ACTION_PUBLISH"])
+@app.on_action("my_app.analyze", name="Analyze", description="Analyze file", secret=os.environ["CUSTOM_ACTION_ANALYZE"])
+@app.on_action("my_app.publish", name="Publish", description="Publish file", secret=os.environ["CUSTOM_ACTION_PUBLISH"])
 ```
 
 ## 📚 Documentation

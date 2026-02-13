@@ -4,6 +4,7 @@ This module provides OAuth 2.0 endpoints for the authorization code flow,
 including login initiation and callback handling using stateless signed tokens.
 """
 
+import html
 import logging
 from typing import TypedDict
 
@@ -96,14 +97,16 @@ async def _callback_endpoint(request: Request) -> HTMLResponse:
     # Check for OAuth error
     if error:
         error_description = request.query_params.get("error_description", "Unknown error")
+        error_escaped = html.escape(error)
+        error_description_escaped = html.escape(error_description)
         return HTMLResponse(
             f"""
             <html>
             <head><title>Authentication Failed</title></head>
             <body>
                 <h1>Authentication Failed</h1>
-                <p><strong>Error:</strong> {error}</p>
-                <p><strong>Description:</strong> {error_description}</p>
+                <p><strong>Error:</strong> {error_escaped}</p>
+                <p><strong>Description:</strong> {error_description_escaped}</p>
                 <p>Please close this window and try again.</p>
             </body>
             </html>

@@ -84,7 +84,6 @@ async def handler(event: ActionEvent):
     print(event.type)           # "my_app.analyze"
     print(event.resource_id)    # "abc123"
     print(event.user.id)        # "user_789"
-    print(event.user.name)      # "John Doe"
     print(event.data)           # None (first call) or dict (form submission)
 ```
 
@@ -145,7 +144,7 @@ app = App()
     description="Send notification about this asset"
 )
 async def notify_team(event: ActionEvent):
-    print(f"Notification sent for {event.resource_id} by {event.user.name}")
+    print(f"Notification sent for {event.resource_id} by {event.user.id}")
 
     # Send actual notification here
     await send_notification(event.resource_id, event.user.id)
@@ -188,7 +187,7 @@ async def publish_asset(event: ActionEvent):
         description="Configure your post:",
         fields=[
             SelectField(label="Platform", name="platform", options=PLATFORMS),
-            TextField(label="Caption", name="caption", placeholder="Enter your caption...")
+            TextField(label="Caption", name="caption", value="Enter your caption...")
         ]
     )
 
@@ -213,7 +212,7 @@ async def analyze_asset(event: ActionEvent):
 ```python
 import os
 import datetime
-from frameio_kit import App, ActionEvent, Message, Form, TextField, TextareaField, CheckboxField, DateField
+from frameio_kit import App, ActionEvent, Message, Form, TextField, TextareaField, CheckboxField
 
 app = App()
 
@@ -242,10 +241,10 @@ async def schedule_review(event: ActionEvent):
         title="Schedule Review",
         description="Set up a review for this asset:",
         fields=[
-            TextField(label="Reviewer Email", name="reviewer", placeholder="reviewer@company.com"),
-            DateField(label="Due Date", name="due_date", value=datetime.date.today().isoformat()),
+            TextField(label="Reviewer Email", name="reviewer", value="reviewer@company.com"),
+            TextField(label="Due Date", name="due_date", value=datetime.date.today().isoformat()),
             CheckboxField(label="Urgent", name="urgent", value=False),
-            TextareaField(label="Notes", name="notes", placeholder="Additional instructions...")
+            TextareaField(label="Notes", name="notes", value="Additional instructions...")
         ]
     )
 ```
@@ -343,7 +342,7 @@ Custom Actions use a two-step process when returning forms:
 async def my_action(event: ActionEvent):
     if event.data is None:
         # First call - show the form
-        return Form(title="My Form", fields=[...])
+        return Form(title="My Form", description="Fill out the form.", fields=[...])
     else:
         # Second call - process the form data
         return Message(title="Done", description="Form processed!")

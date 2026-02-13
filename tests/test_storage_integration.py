@@ -6,7 +6,7 @@ encrypted token data and support TTL expiration.
 
 import base64
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
 import pytest
@@ -37,7 +37,7 @@ def sample_token_data() -> TokenData:
     return TokenData(
         access_token="test_access_token_abc123",
         refresh_token="test_refresh_token_xyz789",
-        expires_at=datetime.now() + timedelta(hours=24),
+        expires_at=datetime.now(tz=timezone.utc) + timedelta(hours=24),
         scopes=["openid", "AdobeID", "frameio.api"],
         user_id="user_test_123",
     )
@@ -100,7 +100,7 @@ class TestMemoryStorageIntegration:
             token_data = TokenData(
                 access_token=f"{user}_access",
                 refresh_token=f"{user}_refresh",
-                expires_at=datetime.now() + timedelta(hours=1),
+                expires_at=datetime.now(tz=timezone.utc) + timedelta(hours=1),
                 scopes=["openid"],
                 user_id=user,
             )

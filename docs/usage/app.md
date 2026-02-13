@@ -27,9 +27,9 @@ app = App(token=os.getenv("FRAMEIO_TOKEN"))
 # Use the client in handlers
 @app.on_webhook("file.ready")
 async def on_file_ready(event: WebhookEvent):
-    file = await app.client.assets.show(
+    file = await app.client.files.show(
         account_id=event.account_id,
-        asset_id=event.resource_id
+        file_id=event.resource_id
     )
     print(f"File name: {file.data.name}")
 ```
@@ -66,9 +66,7 @@ app = App(
     oauth=OAuthConfig(
         client_id=os.getenv("OAUTH_CLIENT_ID"),
         client_secret=os.getenv("OAUTH_CLIENT_SECRET"),
-        redirect_uri="https://your-app.com/auth/callback",
-        scopes=["openid", "frame.io"],
-        base_url="https://your-app.com",
+        redirect_url="https://your-app.com/auth/callback",
         encryption_key=os.getenv("ENCRYPTION_KEY")
     )
 )
@@ -127,7 +125,7 @@ async def on_file_ready(event: WebhookEvent):
     # Secret resolved automatically from database
     pass
 
-@app.on_action("my_app.process", "Process", "Process file")
+@app.on_action("my_app.process", name="Process", description="Process file")
 async def on_process(event: ActionEvent):
     # Secret resolved automatically from database
     pass

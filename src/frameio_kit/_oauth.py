@@ -7,14 +7,14 @@ System (IMS), including authorization flow, token exchange, and automatic token 
 import logging
 import os
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections.abc import Mapping
 from typing import Any, Optional
 
 import httpx
 from itsdangerous import URLSafeTimedSerializer
 from ._storage import Storage
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from ._encryption import TokenEncryption
 from ._exceptions import TokenExchangeError, TokenRefreshError
@@ -43,6 +43,13 @@ class TokenData(BaseModel):
     scopes: list[str]
     user_id: str
 
+    @field_validator("expires_at", mode="before")
+    @classmethod
+    def _ensure_utc(cls, v: datetime) -> datetime:
+        if isinstance(v, datetime) and v.tzinfo is None:
+            return v.replace(tzinfo=timezone.utc)
+        return v
+
     def is_expired(self, buffer_seconds: int = 300) -> bool:
         """Check if the access token is expired or will expire soon.
 
@@ -53,7 +60,7 @@ class TokenData(BaseModel):
         Returns:
             True if the token is expired or will expire within the buffer period.
         """
-        return datetime.now() >= (self.expires_at - timedelta(seconds=buffer_seconds))
+        return datetime.now(tz=timezone.utc) >= (self.expires_at - timedelta(seconds=buffer_seconds))
 
 
 class OAuthConfig(BaseModel):
@@ -95,7 +102,7 @@ class OAuthConfig(BaseModel):
         )
 
         # Full configuration
-        from frameio_kit._storage_dynamodb import DynamoDBStorage
+        from frameio_kit import DynamoDBStorage
 
         app = App(
             oauth=OAuthConfig(
@@ -266,7 +273,7 @@ class AdobeOAuthClient:
         return TokenData(
             access_token=access_token,
             refresh_token=refresh_token,
-            expires_at=datetime.now() + timedelta(seconds=expires_in),
+            expires_at=datetime.now(tz=timezone.utc) + timedelta(seconds=expires_in),
             scopes=scopes,
             user_id="",  # Will be set by TokenManager
         )
@@ -541,7 +548,7 @@ class TokenManager:
 
         # TTL: token lifetime + 1 day buffer for refresh
         # Ensure TTL is never negative (can happen with already-expired tokens during testing)
-        ttl = max(0, int((token_data.expires_at - datetime.now()).total_seconds()) + 86400)
+        ttl = max(0, int((token_data.expires_at - datetime.now(tz=timezone.utc)).total_seconds()) + 86400)
 
         await self.storage.put(key, wrapped, ttl=ttl)
 

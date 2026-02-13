@@ -93,9 +93,9 @@ Access experimental features via `app.client.experimental`:
 
 ```python
 # Experimental custom actions API
-actions = await app.client.experimental.actions.actions_index(
-    account_id=event.account_id
-    workspace_id=event.workspace_id
+actions = await app.client.experimental.custom_actions.actions_index(
+    account_id=event.account_id,
+    workspace_id=event.workspace_id,
 )
 ```
 
@@ -124,12 +124,9 @@ from frameio_kit import Client, get_user_token
 @app.on_action(..., require_user_auth=True)
 async def my_action(event: ActionEvent):
     # Create client with user's token from context
-    user_client = Client(token=get_user_token())
-
-    # API calls are now attributed to the user
-    file = await user_client.files.show(...)
-
-    await user_client.close()
+    async with Client(token=get_user_token()) as user_client:
+        # API calls are now attributed to the user
+        file = await user_client.files.show(...)
 ```
 
 See the [User Authentication guide](user_auth.md) for details on enabling Adobe Login OAuth.

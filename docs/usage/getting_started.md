@@ -122,7 +122,7 @@ WEBHOOK_SECRET=your-webhook-secret-here
     **For multiple secrets**: Pass each secret explicitly via environment variables:
     ```python
     @app.on_webhook("file.ready", secret=os.environ["FILES_WEBHOOK_SECRET"])
-    @app.on_action("my_app.analyze", "Analyze", "Analyze file", secret=os.environ["ANALYZE_CUSTOM_ACTION_SECRET"])
+    @app.on_action("my_app.analyze", name="Analyze", description="Analyze file", secret=os.environ["ANALYZE_CUSTOM_ACTION_SECRET"])
     ```
 
     **For dynamic secrets** (e.g., multi-tenant apps, database-backed secrets): See [Dynamic Secret Resolution](app.md#dynamic-secret-resolution) in the App Configuration guide.
