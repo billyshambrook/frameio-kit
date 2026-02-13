@@ -242,3 +242,63 @@ class TestAppInstallConfiguration:
 
         assert "file.ready" in app._webhook_handlers
         assert "my_app.transcribe" in app._action_handlers
+
+
+class TestFastAPIMount:
+    """Test that frameio-kit works when mounted inside a FastAPI app."""
+
+    def test_install_page_accessible_at_root_mount(self, app_with_handlers):
+        from fastapi import FastAPI
+
+        fastapi_app = FastAPI()
+        fastapi_app.mount("/", app_with_handlers)
+
+        with TestClient(fastapi_app) as c:
+            response = c.get("/install")
+            assert response.status_code == 200
+            assert "Test App" in response.text
+            assert "file.ready" in response.text
+
+    def test_install_page_accessible_at_prefix_mount(self, app_with_handlers):
+        from fastapi import FastAPI
+
+        fastapi_app = FastAPI()
+        fastapi_app.mount("/frameio", app_with_handlers)
+
+        with TestClient(fastapi_app) as c:
+            response = c.get("/frameio/install")
+            assert response.status_code == 200
+            assert "Test App" in response.text
+
+    def test_auth_routes_accessible_when_mounted(self, app_with_handlers):
+        from fastapi import FastAPI
+
+        fastapi_app = FastAPI()
+        fastapi_app.mount("/", app_with_handlers)
+
+        with TestClient(fastapi_app) as c:
+            response = c.get("/auth/login", follow_redirects=False)
+            # Route is reachable (not 404); 400 is expected without valid session state
+            assert response.status_code != 404
+
+    def test_fastapi_routes_coexist_with_mount(self, app_with_handlers):
+        from fastapi import FastAPI
+
+        fastapi_app = FastAPI()
+
+        @fastapi_app.get("/health")
+        async def health():
+            return {"status": "healthy"}
+
+        fastapi_app.mount("/", app_with_handlers)
+
+        with TestClient(fastapi_app) as c:
+            # FastAPI route works
+            response = c.get("/health")
+            assert response.status_code == 200
+            assert response.json() == {"status": "healthy"}
+
+            # Mounted frameio-kit route works
+            response = c.get("/install")
+            assert response.status_code == 200
+            assert "Test App" in response.text

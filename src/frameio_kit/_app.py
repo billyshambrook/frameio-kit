@@ -33,7 +33,7 @@ import functools
 import logging
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import AsyncGenerator, Awaitable, Callable, cast
+from typing import Awaitable, Callable, cast
 
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -406,49 +406,46 @@ class App:
 
         return decorator
 
-    @asynccontextmanager
-    async def _lifespan(self, app: Starlette) -> AsyncGenerator[None, None]:
-        """Manages the application's lifespan, including client setup and teardown."""
-        if self._token:
-            _ = self.client  # Initialize the client
+    async def close(self) -> None:
+        """Close underlying HTTP clients and release resources.
 
-        # Store OAuth components in app state for route access
-        if self._oauth_manager and self._oauth_config:
-            app.state.token_manager = self._oauth_manager.token_manager
-            app.state.oauth_config = self._oauth_config
-            app.state.oauth_client = self._oauth_manager.oauth_client
-            app.state.state_serializer = self._oauth_manager.state_serializer
+        Call this when shutting down the application to cleanly close
+        connections. When running standalone with uvicorn this is handled
+        automatically via the ASGI lifespan. When mounting inside another
+        framework (e.g. FastAPI) you should call this from the parent
+        app's lifespan shutdown.
 
-        # Store install components in app state for route access
-        if self._install_config and self._install_manager and self._template_renderer:
-            app.state.install_manager = self._install_manager
-            app.state.install_config = self._install_config
-            app.state.template_renderer = self._template_renderer
-            app.state.handler_manifest = self._install_manager.build_manifest(
-                self._webhook_handlers, self._action_handlers
-            )
+        Example:
+            ```python
+            from contextlib import asynccontextmanager
+            from fastapi import FastAPI
 
-        yield
+            @asynccontextmanager
+            async def lifespan(app):
+                yield
+                await frameio_app.close()
 
-        # Cleanup resources with error handling for each
-        cleanup_errors: list[Exception] = []
-
+            app = FastAPI(lifespan=lifespan)
+            app.mount("/", frameio_app)
+            ```
+        """
         if self._api_client:
             try:
                 await self._api_client.close()
-            except Exception as e:
+            except Exception:
                 logger.exception("Error closing API client")
-                cleanup_errors.append(e)
 
         if self._oauth_manager:
             try:
                 await self._oauth_manager.close()
-            except Exception as e:
+            except Exception:
                 logger.exception("Error closing OAuth manager")
-                cleanup_errors.append(e)
 
-        if cleanup_errors:
-            logger.warning("Encountered %d error(s) during cleanup", len(cleanup_errors))
+    @asynccontextmanager
+    async def _lifespan(self, app: Starlette):
+        """ASGI lifespan handler for standalone usage."""
+        yield
+        await self.close()
 
     def _create_asgi_app(self) -> Starlette:
         """Builds the Starlette ASGI application with routes and lifecycle hooks."""
@@ -466,11 +463,30 @@ class App:
             install_routes = create_install_routes()
             routes.extend(install_routes)
 
-        return Starlette(
+        starlette_app = Starlette(
             debug=False,
             routes=routes,
             lifespan=self._lifespan,
         )
+
+        # Set state eagerly so it's available even when mounted as a
+        # sub-application (where the inner lifespan may not run).
+        if self._oauth_manager and self._oauth_config:
+            starlette_app.state.token_manager = self._oauth_manager.token_manager
+            starlette_app.state.oauth_config = self._oauth_config
+            starlette_app.state.oauth_client = self._oauth_manager.oauth_client
+            starlette_app.state.state_serializer = self._oauth_manager.state_serializer
+
+        if self._install_config and self._install_manager and self._template_renderer:
+            starlette_app.state.install_manager = self._install_manager
+            starlette_app.state.install_config = self._install_config
+            starlette_app.state.template_renderer = self._template_renderer
+            # Store references so the manifest can be built lazily (handlers
+            # are registered via decorators after __init__ completes).
+            starlette_app.state._webhook_handlers = self._webhook_handlers
+            starlette_app.state._action_handlers = self._action_handlers
+
+        return starlette_app
 
     def _find_handler(self, event_type: str) -> _HandlerRegistration | None:
         """Finds the registered handler for a given event type."""

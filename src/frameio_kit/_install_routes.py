@@ -80,6 +80,15 @@ def _is_htmx(request: Request) -> bool:
     return request.headers.get("HX-Request") == "true"
 
 
+def _get_manifest(request: Request) -> HandlerManifest:
+    """Get the handler manifest, building it lazily on first access."""
+    state = request.app.state
+    if not hasattr(state, "handler_manifest"):
+        manager: InstallationManager = state.install_manager
+        state.handler_manifest = manager.build_manifest(state._webhook_handlers, state._action_handlers)
+    return state.handler_manifest
+
+
 def _infer_base_url(request: Request, config: Any) -> str:
     """Infer the public base URL for webhook/action callbacks."""
     if config.base_url:
@@ -113,7 +122,7 @@ async def _install_page(request: Request) -> Response:
     from ._install_templates import TemplateRenderer
 
     renderer: TemplateRenderer = request.app.state.template_renderer
-    manifest: HandlerManifest = request.app.state.handler_manifest
+    manifest: HandlerManifest = _get_manifest(request)
 
     session = await _get_session(request)
 
@@ -287,7 +296,7 @@ async def _install_status(request: Request) -> Response:
 
     renderer: TemplateRenderer = request.app.state.template_renderer
     manager: InstallationManager = request.app.state.install_manager
-    manifest: HandlerManifest = request.app.state.handler_manifest
+    manifest: HandlerManifest = _get_manifest(request)
 
     session = await _get_session(request)
     if session is None:
@@ -328,7 +337,7 @@ async def _install_execute(request: Request) -> Response:
     config: InstallConfig = request.app.state.install_config
     renderer: TemplateRenderer = request.app.state.template_renderer
     manager: InstallationManager = request.app.state.install_manager
-    manifest: HandlerManifest = request.app.state.handler_manifest
+    manifest: HandlerManifest = _get_manifest(request)
 
     session = await _get_session(request)
     if session is None:
