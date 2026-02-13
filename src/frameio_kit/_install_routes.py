@@ -134,7 +134,8 @@ async def _install_page(request: Request) -> Response:
     # Authenticated — load accounts
     from ._client import Client
 
-    client = Client(token=session["access_token"])
+    manager: InstallationManager = request.app.state.install_manager
+    client = Client(token=session["access_token"], base_url=manager._base_url)
     try:
         accounts = await _paginate_all(client.accounts.index)
     except Exception:
@@ -277,7 +278,8 @@ async def _install_workspaces(request: Request) -> Response:
 
     from ._client import Client
 
-    client = Client(token=session["access_token"])
+    manager: InstallationManager = request.app.state.install_manager
+    client = Client(token=session["access_token"], base_url=manager._base_url)
     try:
         workspaces = await _paginate_all(client.workspaces.index, account_id)
     except Exception:

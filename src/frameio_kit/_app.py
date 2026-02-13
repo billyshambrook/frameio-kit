@@ -109,6 +109,7 @@ class App:
         self,
         *,
         token: str | None = None,
+        base_url: str | None = None,
         middleware: list[Middleware] | None = None,
         oauth: OAuthConfig | None = None,
         secret_resolver: SecretResolver | None = None,
@@ -122,6 +123,9 @@ class App:
                 API calls made via the `app.client` property. It is highly
                 recommended to load this from a secure source, such as an
                 environment variable.
+            base_url: Optional base URL for the Frame.io API. Defaults to
+                ``https://api.frame.io``. Override this for testing or to
+                target a different API environment.
             middleware: An optional list of middleware classes to process
                 requests before they reach the handler.
             oauth: Optional OAuth configuration for user authentication. When
@@ -137,6 +141,7 @@ class App:
                 Requires ``oauth`` to also be configured.
         """
         self._token = token
+        self._base_url = base_url
         self._middleware = middleware or []
         self._oauth_config = oauth
         self._secret_resolver = secret_resolver
@@ -172,6 +177,7 @@ class App:
                 storage=storage,
                 encryption=encryption,
                 install_config=self._install_config,
+                base_url=self._base_url,
             )
             self._template_renderer = TemplateRenderer(install_config=self._install_config)
 
@@ -211,7 +217,7 @@ class App:
         if not self._token:
             raise RuntimeError("Cannot access API client. `token` was not provided to App.")
         if self._api_client is None:
-            self._api_client = Client(token=self._token)
+            self._api_client = Client(token=self._token, base_url=self._base_url)
         return self._api_client
 
     @property

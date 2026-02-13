@@ -128,6 +128,7 @@ class OAuthConfig(BaseModel):
     scopes: list[str] = Field(
         default_factory=lambda: ["additional_info.roles", "offline_access", "profile", "email", "openid"]
     )
+    ims_url: str = "https://ims-na1.adobelogin.com"
     storage: Optional[Storage] = None
     encryption_key: Optional[str] = None
     token_refresh_buffer_seconds: int = 300  # 5 minutes default
@@ -174,6 +175,7 @@ class AdobeOAuthClient:
         client_id: str,
         client_secret: str,
         scopes: list[str] | None = None,
+        ims_url: str = "https://ims-na1.adobelogin.com",
         http_client: httpx.AsyncClient | None = None,
     ) -> None:
         """Initialize Adobe OAuth client.
@@ -182,6 +184,8 @@ class AdobeOAuthClient:
             client_id: Adobe IMS application client ID.
             client_secret: Adobe IMS application client secret.
             scopes: List of OAuth scopes. Defaults to Frame.io API access.
+            ims_url: Base URL for Adobe IMS. Defaults to
+                ``https://ims-na1.adobelogin.com``.
             http_client: Optional httpx.AsyncClient for HTTP requests. If not provided,
                 a new client will be created with default settings (30s timeout).
                 Providing your own client allows connection pooling and custom configuration.
@@ -191,8 +195,9 @@ class AdobeOAuthClient:
         self.scopes = scopes or ["additional_info.roles", "offline_access", "profile", "email", "openid"]
 
         # Adobe IMS OAuth 2.0 endpoints
-        self.authorization_url = "https://ims-na1.adobelogin.com/ims/authorize/v2"
-        self.token_url = "https://ims-na1.adobelogin.com/ims/token/v3"
+        ims_base = ims_url.rstrip("/")
+        self.authorization_url = f"{ims_base}/ims/authorize/v2"
+        self.token_url = f"{ims_base}/ims/token/v3"
 
         # Use provided client or create our own
         self._http = http_client or httpx.AsyncClient(timeout=30.0)
@@ -405,6 +410,7 @@ class TokenManager:
         client_id: str,
         client_secret: str,
         scopes: list[str] | None = None,
+        ims_url: str = "https://ims-na1.adobelogin.com",
         http_client: httpx.AsyncClient | None = None,
         token_refresh_buffer_seconds: int = 300,
     ) -> None:
@@ -416,6 +422,7 @@ class TokenManager:
             client_id: Adobe IMS client ID (for creating OAuth client when needed).
             client_secret: Adobe IMS client secret (for creating OAuth client when needed).
             scopes: OAuth scopes (for creating OAuth client when needed).
+            ims_url: Base URL for Adobe IMS.
             http_client: Optional httpx.AsyncClient (for creating OAuth client when needed).
             token_refresh_buffer_seconds: Seconds before expiration to refresh tokens.
                 Defaults to 300 seconds (5 minutes).
@@ -425,6 +432,7 @@ class TokenManager:
         self._client_id = client_id
         self._client_secret = client_secret
         self._scopes = scopes
+        self._ims_url = ims_url
         self._http_client = http_client
         self.token_refresh_buffer_seconds = token_refresh_buffer_seconds
         self._oauth_client: AdobeOAuthClient | None = None
@@ -436,6 +444,7 @@ class TokenManager:
                 client_id=self._client_id,
                 client_secret=self._client_secret,
                 scopes=self._scopes,
+                ims_url=self._ims_url,
                 http_client=self._http_client,
             )
         return self._oauth_client

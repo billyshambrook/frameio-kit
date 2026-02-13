@@ -68,6 +68,7 @@ class OAuthManager:
             client_id=config.client_id,
             client_secret=config.client_secret,
             scopes=config.scopes,
+            ims_url=config.ims_url,
             http_client=config.http_client,
             token_refresh_buffer_seconds=config.token_refresh_buffer_seconds,
         )
@@ -77,6 +78,7 @@ class OAuthManager:
             client_id=config.client_id,
             client_secret=config.client_secret,
             scopes=config.scopes,
+            ims_url=config.ims_url,
             http_client=config.http_client,
         )
 

@@ -69,10 +69,12 @@ class InstallationManager:
         storage: Storage,
         encryption: TokenEncryption,
         install_config: InstallConfig,
+        base_url: str | None = None,
     ) -> None:
         self.storage = storage
         self.encryption = encryption
         self.install_config = install_config
+        self._base_url = base_url
 
     def build_manifest(
         self,
@@ -157,7 +159,7 @@ class InstallationManager:
         from frameio.webhooks.types import WebhookCreateParamsData
         from frameio_experimental.custom_actions.types import ActionCreateParamsData
 
-        client = Client(token=token)
+        client = Client(token=token, base_url=self._base_url)
         try:
             now = datetime.now(tz=timezone.utc)
             webhook_record: WebhookRecord | None = None
@@ -248,7 +250,7 @@ class InstallationManager:
         from frameio.webhooks.types import WebhookCreateParamsData, WebhookUpdateParamsData
         from frameio_experimental.custom_actions.types import ActionCreateParamsData, ActionUpdateParamsData
 
-        client = Client(token=token)
+        client = Client(token=token, base_url=self._base_url)
         try:
             now = datetime.now(tz=timezone.utc)
             webhook_record: WebhookRecord | None = None
@@ -372,7 +374,7 @@ class InstallationManager:
             workspace_id: Frame.io workspace ID.
             existing: The existing Installation record to remove.
         """
-        client = Client(token=token)
+        client = Client(token=token, base_url=self._base_url)
         try:
             # Delete webhook
             if existing.webhook:
