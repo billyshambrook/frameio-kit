@@ -161,6 +161,12 @@ app = App(oauth=OAuthConfig(...))
 
 ### Multi-Server: DynamoDBStorage
 
+Install the optional dependency:
+
+```bash
+pip install frameio-kit[dynamodb]
+```
+
 Tokens shared via AWS DynamoDB:
 
 ```python

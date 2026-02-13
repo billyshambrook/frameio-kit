@@ -57,7 +57,7 @@ class DynamoDBStorage:
             import aioboto3  # pyright: ignore[reportMissingImports]
         except ImportError:
             raise ImportError(
-                "aioboto3 is required for DynamoDBStorage. Install it with: pip install aioboto3"
+                "aioboto3 is required for DynamoDBStorage. Install it with: pip install frameio-kit[dynamodb]"
             ) from None
 
         self._table_name = table_name

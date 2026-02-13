@@ -163,6 +163,12 @@ app = App(
 
 ### Production: DynamoDBStorage
 
+Install the optional dependencies:
+
+```bash
+pip install frameio-kit[install,dynamodb]
+```
+
 ```python
 from frameio_kit import DynamoDBStorage
 

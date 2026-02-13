@@ -35,6 +35,17 @@ uv add frameio-kit uvicorn
 pip install frameio-kit uvicorn
 ```
 
+### Optional Dependencies
+
+frameio-kit provides optional extras for additional features:
+
+| Extra | Command | Description |
+|-------|---------|-------------|
+| `install` | `pip install frameio-kit[install]` | [Installation system](installation.md) for self-service workspace onboarding |
+| `dynamodb` | `pip install frameio-kit[dynamodb]` | [DynamoDB storage backend](user_auth.md#multi-server-dynamodbstorage) for multi-server deployments |
+
+You can combine extras: `pip install frameio-kit[install,dynamodb]`
+
 ## Step 2: Create Your Application
 
 Create a file named `main.py` with the following code:
