@@ -174,9 +174,25 @@ app = App(
 )
 ```
 
-**Note**: DynamoDB table requires:
-- **Partition key**: `key` (String)
-- **TTL attribute**: `ttl` (Number) - Enable TTL for automatic cleanup
+The DynamoDB table requires a partition key `PK` (String) and TTL enabled on the `ttl` attribute.
+
+```hcl
+resource "aws_dynamodb_table" "frameio_app_data" {
+  name         = "frameio-app-data"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "PK"
+
+  attribute {
+    name = "PK"
+    type = "S"
+  }
+
+  ttl {
+    attribute_name = "ttl"
+    enabled        = true
+  }
+}
+```
 
 ### Custom Storage
 

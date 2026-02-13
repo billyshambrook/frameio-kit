@@ -4,7 +4,7 @@ This module provides a DynamoDB-backed storage implementation using aioboto3.
 Requires the ``aioboto3`` package to be installed separately.
 
 DynamoDB table requirements:
-    - Partition key: ``key`` (String)
+    - Partition key: ``PK`` (String)
     - TTL attribute: ``ttl`` (Number) — enable TTL in DynamoDB for automatic cleanup
 """
 
@@ -76,7 +76,7 @@ class DynamoDBStorage:
     async def get(self, key: str) -> dict[str, Any] | None:
         async with self._session.resource("dynamodb", **self._resource_kwargs()) as dynamodb:
             table = await dynamodb.Table(self._table_name)
-            response = await table.get_item(Key={"key": key})
+            response = await table.get_item(Key={"PK": key})
 
         item = response.get("Item")
         if item is None:
@@ -92,7 +92,7 @@ class DynamoDBStorage:
 
     async def put(self, key: str, value: dict[str, Any], *, ttl: int | None = None) -> None:
         item: dict[str, Any] = {
-            "key": key,
+            "PK": key,
             "value": json.dumps(value),
         }
         if ttl is not None:
@@ -105,4 +105,4 @@ class DynamoDBStorage:
     async def delete(self, key: str) -> None:
         async with self._session.resource("dynamodb", **self._resource_kwargs()) as dynamodb:
             table = await dynamodb.Table(self._table_name)
-            await table.delete_item(Key={"key": key})
+            await table.delete_item(Key={"PK": key})
