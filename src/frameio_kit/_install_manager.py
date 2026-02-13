@@ -266,9 +266,7 @@ class InstallationManager:
                         existing.webhook.webhook_id,
                         data=WebhookUpdateParamsData(events=sorted(manifest_events)),
                     )
-                    webhook_record = existing.webhook.model_copy(
-                        update={"events": sorted(manifest_events)}
-                    )
+                    webhook_record = existing.webhook.model_copy(update={"events": sorted(manifest_events)})
                 else:
                     # Unchanged
                     webhook_record = existing.webhook
@@ -334,9 +332,7 @@ class InstallationManager:
                         ),
                     )
                     action_records.append(
-                        existing_action.model_copy(
-                            update={"name": entry.name, "description": entry.description}
-                        )
+                        existing_action.model_copy(update={"name": entry.name, "description": entry.description})
                     )
                 else:
                     # UNCHANGED - keep existing record
@@ -345,9 +341,7 @@ class InstallationManager:
             # REMOVED actions - DELETE
             for event_type, existing_action in existing_actions_by_event.items():
                 if event_type not in manifest_actions_by_event:
-                    await client.experimental.custom_actions.actions_delete(
-                        account_id, existing_action.action_id
-                    )
+                    await client.experimental.custom_actions.actions_delete(account_id, existing_action.action_id)
 
             installation = existing.model_copy(
                 update={
@@ -386,9 +380,7 @@ class InstallationManager:
 
             # Delete all custom actions
             for action in existing.actions:
-                await client.experimental.custom_actions.actions_delete(
-                    account_id, action.action_id
-                )
+                await client.experimental.custom_actions.actions_delete(account_id, action.action_id)
 
             # Remove from storage
             key = _storage_key(account_id, workspace_id)
@@ -473,9 +465,7 @@ class InstallationManager:
 
         encrypted_actions = []
         for action in installation.actions:
-            encrypted_actions.append(
-                action.model_copy(update={"secret": self._encrypt_secret(action.secret)})
-            )
+            encrypted_actions.append(action.model_copy(update={"secret": self._encrypt_secret(action.secret)}))
 
         encrypted_installation = installation.model_copy(
             update={"webhook": encrypted_webhook, "actions": encrypted_actions}

@@ -77,6 +77,5 @@ class InstallationSecretResolver:
                 return action.secret
 
         raise InstallationNotFoundError(
-            f"No action record found for event type '{event.type}' "
-            f"in workspace {event.workspace_id}"
+            f"No action record found for event type '{event.type}' in workspace {event.workspace_id}"
         )

@@ -400,8 +400,7 @@ class TemplateRenderer:
             import jinja2
         except ImportError:
             raise ImportError(
-                "Jinja2 is required for the installation system. "
-                "Install it with: pip install frameio-kit[install]"
+                "Jinja2 is required for the installation system. Install it with: pip install frameio-kit[install]"
             )
 
         self._config = install_config

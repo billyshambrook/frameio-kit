@@ -396,9 +396,7 @@ async def _install_execute(request: Request) -> Response:
                 details_parts.append(f"{action_count} custom action{'s' if action_count != 1 else ''}")
             details = f"Created: {', '.join(details_parts)}. Your workspace is now connected."
 
-            html = renderer.render_result_fragment(
-                success=True, title="Successfully installed!", details=details
-            )
+            html = renderer.render_result_fragment(success=True, title="Successfully installed!", details=details)
         else:
             # Update existing
             installation = await manager.update(
@@ -410,7 +408,9 @@ async def _install_execute(request: Request) -> Response:
                 existing=existing,
             )
             html = renderer.render_result_fragment(
-                success=True, title="Successfully updated!", details="Installation has been updated to match current configuration."
+                success=True,
+                title="Successfully updated!",
+                details="Installation has been updated to match current configuration.",
             )
 
         response = HTMLResponse(html)
@@ -426,9 +426,7 @@ async def _install_execute(request: Request) -> Response:
         else:
             error_msg = "An unexpected error occurred. Please try again."
 
-        html = renderer.render_result_fragment(
-            success=False, title="Installation failed", error=error_msg
-        )
+        html = renderer.render_result_fragment(success=False, title="Installation failed", error=error_msg)
         return HTMLResponse(html, status_code=500)
 
 
@@ -474,7 +472,9 @@ async def _install_uninstall(request: Request) -> Response:
         )
 
         html = renderer.render_result_fragment(
-            success=True, title="Successfully uninstalled!", details="All webhooks and custom actions have been removed."
+            success=True,
+            title="Successfully uninstalled!",
+            details="All webhooks and custom actions have been removed.",
         )
         response = HTMLResponse(html)
         response.headers["HX-Trigger"] = "refreshStatus"
@@ -488,9 +488,7 @@ async def _install_uninstall(request: Request) -> Response:
         else:
             error_msg = "An unexpected error occurred. Please try again."
 
-        html = renderer.render_result_fragment(
-            success=False, title="Uninstall failed", error=error_msg
-        )
+        html = renderer.render_result_fragment(success=False, title="Uninstall failed", error=error_msg)
         return HTMLResponse(html, status_code=500)
 
 

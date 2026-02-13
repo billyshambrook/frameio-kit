@@ -176,9 +176,7 @@ class TestInstallationDiff:
         diff = InstallationDiff(
             webhook_events_added=[],
             webhook_events_removed=[],
-            actions_added=[
-                ActionManifestEntry(event_type="test", name="Test", description="desc")
-            ],
+            actions_added=[ActionManifestEntry(event_type="test", name="Test", description="desc")],
             actions_removed=[],
             actions_modified=[],
         )
