@@ -5,13 +5,9 @@ including token storage, encryption, and the OAuth client lifecycle.
 """
 
 import logging
-from typing import TYPE_CHECKING
-
 from ._encryption import TokenEncryption
 from ._oauth import AdobeOAuthClient, OAuthConfig, StateSerializer, TokenManager
-
-if TYPE_CHECKING:
-    from key_value.aio.protocols import AsyncKeyValue
+from ._storage import MemoryStorage, Storage
 
 logger = logging.getLogger(__name__)
 
@@ -54,12 +50,10 @@ class OAuthManager:
         """
         self.config = config
 
-        # Use provided storage or default to MemoryStore
-        storage: "AsyncKeyValue"
+        # Use provided storage or default to MemoryStorage
+        storage: Storage
         if config.storage is None:
-            from key_value.aio.stores.memory import MemoryStore
-
-            storage = MemoryStore()
+            storage = MemoryStorage()
             logger.info("Using in-memory storage for OAuth tokens (not persistent)")
         else:
             storage = config.storage

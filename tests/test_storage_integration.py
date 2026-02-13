@@ -1,21 +1,19 @@
 """Integration tests for storage backends with encryption.
 
-These tests verify that py-key-value-aio stores can work with encrypted token data.
-The tests use helper functions to wrap encrypted bytes in dict format as required
-by py-key-value-aio stores.
+These tests verify that storage implementations work correctly with
+encrypted token data and support TTL expiration.
 """
 
 import base64
+import time
 from datetime import datetime, timedelta
-from pathlib import Path
-from typing import AsyncGenerator
+from unittest.mock import patch
 
 import pytest
-from key_value.aio.stores.disk import DiskStore
-from key_value.aio.stores.memory import MemoryStore
 
 from frameio_kit._encryption import TokenEncryption
 from frameio_kit._oauth import TokenData
+from frameio_kit._storage import MemoryStorage, Storage
 
 
 # Note: These helpers duplicate TokenManager._wrap_encrypted_bytes() and
@@ -24,12 +22,12 @@ from frameio_kit._oauth import TokenData
 
 
 def _wrap_encrypted_bytes(encrypted_bytes: bytes) -> dict[str, str]:
-    """Wrap encrypted bytes in dict format for py-key-value-aio stores."""
+    """Wrap encrypted bytes in dict format for storage."""
     return {"encrypted_token": base64.b64encode(encrypted_bytes).decode("utf-8")}
 
 
 def _unwrap_encrypted_bytes(data: dict[str, str]) -> bytes:
-    """Unwrap encrypted bytes from py-key-value-aio dict format."""
+    """Unwrap encrypted bytes from storage dict format."""
     return base64.b64decode(data["encrypted_token"])
 
 
@@ -52,30 +50,26 @@ def encryption() -> TokenEncryption:
 
 
 @pytest.fixture
-async def memory_store() -> AsyncGenerator[MemoryStore, None]:
-    """Create MemoryStore instance for testing."""
-    store = MemoryStore()
-    yield store
-    # Cleanup
-    await store.destroy()
+def memory_storage() -> MemoryStorage:
+    """Create MemoryStorage instance for testing."""
+    return MemoryStorage()
 
 
-@pytest.fixture
-async def disk_store(tmp_path: Path) -> AsyncGenerator[DiskStore, None]:
-    """Create DiskStore instance for testing."""
-    store_path = tmp_path / "test_tokens"
-    store = DiskStore(directory=str(store_path))
-    yield store
-    # DiskStore cleanup handled by tmp_path fixture
+class TestProtocolConformance:
+    """Test that implementations conform to the Storage protocol."""
+
+    def test_memory_storage_is_storage(self):
+        """Test that MemoryStorage satisfies the Storage protocol."""
+        assert isinstance(MemoryStorage(), Storage)
 
 
-class TestMemoryStoreIntegration:
-    """Test suite for MemoryStore integration with encryption."""
+class TestMemoryStorageIntegration:
+    """Test suite for MemoryStorage integration with encryption."""
 
     async def test_basic_operations(
-        self, memory_store: MemoryStore, encryption: TokenEncryption, sample_token_data: TokenData
+        self, memory_storage: MemoryStorage, encryption: TokenEncryption, sample_token_data: TokenData
     ):
-        """Test that encrypted tokens can be stored and retrieved from MemoryStore."""
+        """Test that encrypted tokens can be stored and retrieved from MemoryStorage."""
         key = "user:test_123"
 
         # Encrypt token
@@ -83,10 +77,10 @@ class TestMemoryStoreIntegration:
         wrapped = _wrap_encrypted_bytes(encrypted)
 
         # Store
-        await memory_store.put(key, wrapped)
+        await memory_storage.put(key, wrapped)
 
         # Retrieve
-        retrieved = await memory_store.get(key)
+        retrieved = await memory_storage.get(key)
         assert retrieved is not None
 
         # Decrypt and verify
@@ -97,7 +91,7 @@ class TestMemoryStoreIntegration:
         assert decrypted.access_token == sample_token_data.access_token
         assert decrypted.refresh_token == sample_token_data.refresh_token
 
-    async def test_multiple_users(self, memory_store: MemoryStore, encryption: TokenEncryption):
+    async def test_multiple_users(self, memory_storage: MemoryStorage, encryption: TokenEncryption):
         """Test storing tokens for multiple users."""
         users = ["alice", "bob", "charlie"]
 
@@ -112,84 +106,55 @@ class TestMemoryStoreIntegration:
             )
             encrypted = encryption.encrypt(token_data)
             wrapped = _wrap_encrypted_bytes(encrypted)
-            await memory_store.put(f"user:{user}", wrapped)
+            await memory_storage.put(f"user:{user}", wrapped)
 
         # Retrieve and verify each token
         for user in users:
-            retrieved = await memory_store.get(f"user:{user}")
+            retrieved = await memory_storage.get(f"user:{user}")
             assert retrieved is not None
             unwrapped = _unwrap_encrypted_bytes(retrieved)
             decrypted = encryption.decrypt(unwrapped)
             assert decrypted.access_token == f"{user}_access"
 
+    async def test_ttl_expiration(self, memory_storage: MemoryStorage):
+        """Test that entries expire after their TTL."""
+        await memory_storage.put("key", {"data": "value"}, ttl=10)
 
-class TestDiskStoreIntegration:
-    """Test suite for DiskStore integration with encryption."""
+        # Should exist before expiry
+        assert await memory_storage.get("key") is not None
 
-    async def test_basic_operations(
-        self, disk_store: DiskStore, encryption: TokenEncryption, sample_token_data: TokenData
-    ):
-        """Test that encrypted tokens can be stored and retrieved from DiskStore."""
-        key = "user:test_123"
+        # Advance monotonic time past TTL
+        with patch("frameio_kit._storage.time") as mock_time:
+            mock_time.monotonic.return_value = time.monotonic() + 11
+            assert await memory_storage.get("key") is None
 
-        # Encrypt token
-        encrypted = encryption.encrypt(sample_token_data)
-        wrapped = _wrap_encrypted_bytes(encrypted)
+    async def test_no_ttl_does_not_expire(self, memory_storage: MemoryStorage):
+        """Test that entries without TTL do not expire."""
+        await memory_storage.put("key", {"data": "value"})
 
-        # Store
-        await disk_store.put(key, wrapped)
-
-        # Retrieve
-        retrieved = await disk_store.get(key)
-        assert retrieved is not None
-
-        # Decrypt and verify
-        unwrapped = _unwrap_encrypted_bytes(retrieved)
-        decrypted = encryption.decrypt(unwrapped)
-
-        assert decrypted.user_id == sample_token_data.user_id
-        assert decrypted.access_token == sample_token_data.access_token
-
-    async def test_persistence(self, tmp_path: Path, encryption: TokenEncryption, sample_token_data: TokenData):
-        """Test that data persists across DiskStore instances."""
-        store_path = tmp_path / "persistent_tokens"
-        key = "user:persistent"
-
-        # Create first store and save data
-        store1 = DiskStore(directory=str(store_path))
-        encrypted = encryption.encrypt(sample_token_data)
-        wrapped = _wrap_encrypted_bytes(encrypted)
-        await store1.put(key, wrapped)
-
-        # Create second store pointing to same directory
-        store2 = DiskStore(directory=str(store_path))
-        retrieved = await store2.get(key)
-
-        assert retrieved is not None
-        unwrapped = _unwrap_encrypted_bytes(retrieved)
-        decrypted = encryption.decrypt(unwrapped)
-        assert decrypted.user_id == sample_token_data.user_id
+        with patch("frameio_kit._storage.time") as mock_time:
+            mock_time.monotonic.return_value = time.monotonic() + 999999
+            assert await memory_storage.get("key") is not None
 
 
 class TestStorageBackendErrors:
     """Test error handling for storage backends."""
 
-    async def test_get_nonexistent_key(self, memory_store: MemoryStore):
+    async def test_get_nonexistent_key(self, memory_storage: MemoryStorage):
         """Test that getting a non-existent key returns None."""
-        value = await memory_store.get("user:nonexistent")
+        value = await memory_storage.get("user:nonexistent")
         assert value is None
 
-    async def test_delete_nonexistent_key(self, memory_store: MemoryStore):
+    async def test_delete_nonexistent_key(self, memory_storage: MemoryStorage):
         """Test that deleting a non-existent key doesn't raise an error."""
-        # Should not raise
-        await memory_store.delete("user:nonexistent")
+        await memory_storage.delete("user:nonexistent")
 
 
 class TestEncryptionWithStorage:
     """Test that encryption works correctly with storage backends."""
 
     async def test_different_keys_produce_different_encrypted_data(
-        self, memory_store: MemoryStore, sample_token_data: TokenData
+        self, memory_storage: MemoryStorage, sample_token_data: TokenData
     ):
         """Test that the same data encrypted with different keys produces different ciphertext."""
         key1 = TokenEncryption.generate_key()
@@ -209,12 +174,12 @@ class TestEncryptionWithStorage:
         wrapped1 = _wrap_encrypted_bytes(encrypted1)
         wrapped2 = _wrap_encrypted_bytes(encrypted2)
 
-        await memory_store.put("key1", wrapped1)
-        await memory_store.put("key2", wrapped2)
+        await memory_storage.put("key1", wrapped1)
+        await memory_storage.put("key2", wrapped2)
 
         # Retrieve and decrypt with correct keys
-        retrieved1 = await memory_store.get("key1")
-        retrieved2 = await memory_store.get("key2")
+        retrieved1 = await memory_storage.get("key1")
+        retrieved2 = await memory_storage.get("key2")
 
         assert retrieved1 is not None
         assert retrieved2 is not None

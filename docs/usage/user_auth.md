@@ -102,7 +102,7 @@ async def process_file(event: ActionEvent):
 
 - `redirect_url` - Full OAuth callback URL (default: automatically inferred). Set explicitly for reverse proxy scenarios.
 - `scopes` - OAuth scopes (default: `["additional_info.roles", "offline_access", "profile", "email", "openid"]`)
-- `storage` - Token storage backend (default: `MemoryStore()`)
+- `storage` - Token storage backend (default: `MemoryStorage()`)
 - `encryption_key` - Explicit encryption key (default: environment variable or ephemeral)
 
 ### Redirect URL Configuration
@@ -126,15 +126,15 @@ app = App(
 Make sure to consider [mounting](mounting.md) when setting the `redirect_url`.
 
 !!! warning "Important: Mount Path Consideration"
-    If you mount your app at a subpath (e.g., `/frameio`), your `redirect_url` must include the mount path.  
-    For example, if your app is mounted at `/frameio`, set:  
-    `redirect_url="https://yourapp.com/frameio/auth/callback"`  
-    not  
+    If you mount your app at a subpath (e.g., `/frameio`), your `redirect_url` must include the mount path.
+    For example, if your app is mounted at `/frameio`, set:
+    `redirect_url="https://yourapp.com/frameio/auth/callback"`
+    not
     `redirect_url="https://yourapp.com/auth/callback"`
 ### Complete Example
 
 ```python
-from key_value.aio.stores.redis import RedisStore
+from frameio_kit._storage_dynamodb import DynamoDBStorage
 
 app = App(
     oauth=OAuthConfig(
@@ -142,7 +142,10 @@ app = App(
         client_secret=os.environ["ADOBE_CLIENT_SECRET"],
         redirect_url="https://yourapp.com/auth/callback",  # Explicit for proxy
         scopes=["openid", "AdobeID", "frameio.api"],
-        storage=RedisStore(url="redis://localhost:6379"),
+        storage=DynamoDBStorage(
+            table_name="frameio-oauth-tokens",
+            region_name="us-east-1",
+        ),
         encryption_key=os.environ["FRAMEIO_AUTH_ENCRYPTION_KEY"],
     )
 )
@@ -152,7 +155,7 @@ app = App(
 
 Tokens are encrypted at rest. Choose a backend based on your deployment:
 
-### Development: MemoryStore
+### Development: MemoryStorage
 
 Tokens stored in memory (lost on restart):
 
@@ -161,47 +164,17 @@ Tokens stored in memory (lost on restart):
 app = App(oauth=OAuthConfig(...))
 ```
 
-### Single Server: DiskStore
-
-Tokens persist to disk:
-
-```python
-from key_value.aio.stores.disk import DiskStore
-
-app = App(
-    oauth=OAuthConfig(
-        ...,
-        storage=DiskStore(directory="./tokens"),
-    )
-)
-```
-
-### Multi-Server: RedisStore
-
-Tokens shared across servers:
-
-```python
-from key_value.aio.stores.redis import RedisStore
-
-app = App(
-    oauth=OAuthConfig(
-        ...,
-        storage=RedisStore(url="redis://localhost:6379"),
-    )
-)
-```
-
-### Multi-Server: DynamoDBStore
+### Multi-Server: DynamoDBStorage
 
 Tokens shared via AWS DynamoDB:
 
 ```python
-from key_value.aio.stores.dynamodb import DynamoDBStore
+from frameio_kit._storage_dynamodb import DynamoDBStorage
 
 app = App(
     oauth=OAuthConfig(
         ...,
-        storage=DynamoDBStore(
+        storage=DynamoDBStorage(
             table_name="frameio-oauth-tokens",
             region_name="us-east-1",
         ),
@@ -212,6 +185,31 @@ app = App(
 **Note**: DynamoDB table requires:
 - **Partition key**: `key` (String)
 - **TTL attribute**: `ttl` (Number) - Enable TTL for automatic cleanup
+
+### Custom Storage
+
+Implement the `Storage` protocol for any other backend:
+
+```python
+from frameio_kit import Storage
+
+class RedisStorage:
+    async def get(self, key: str) -> dict | None:
+        ...
+
+    async def put(self, key: str, value: dict, *, ttl: int | None = None) -> None:
+        ...
+
+    async def delete(self, key: str) -> None:
+        ...
+
+app = App(
+    oauth=OAuthConfig(
+        ...,
+        storage=RedisStorage(),
+    )
+)
+```
 
 ## Encryption
 

@@ -10,7 +10,6 @@ dependencies = [
     "frameio-experimental>=0.0.3",
     "httpx>=0.28.1",
     "itsdangerous>=2.2.0",
-    "py-key-value-aio[disk,memory]>=0.1.0",
     "pydantic>=2.11.10",
     "starlette>=0.48.0",
 ]

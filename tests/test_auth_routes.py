@@ -37,9 +37,9 @@ def oauth_config_no_redirect() -> OAuthConfig:
 @pytest.fixture
 def token_manager() -> TokenManager:
     """Create test token manager."""
-    from key_value.aio.stores.memory import MemoryStore
+    from frameio_kit._storage import MemoryStorage
 
-    storage = MemoryStore()
+    storage = MemoryStorage()
     encryption = TokenEncryption(key=TEST_SECRET_KEY)
     return TokenManager(
         storage=storage,

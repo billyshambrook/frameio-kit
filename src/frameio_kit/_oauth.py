@@ -13,7 +13,7 @@ from typing import Any, Optional
 
 import httpx
 from itsdangerous import URLSafeTimedSerializer
-from key_value.aio.protocols import AsyncKeyValue
+from ._storage import Storage
 from pydantic import BaseModel, Field
 
 from ._encryption import TokenEncryption
@@ -71,7 +71,7 @@ class OAuthConfig(BaseModel):
             differs from what the application sees. Must be registered in Adobe Console.
         scopes: List of OAuth scopes to request. Defaults to Frame.io API access.
         storage: Storage backend instance for persisting encrypted tokens. If None,
-            defaults to MemoryStore (in-memory, lost on restart).
+            defaults to MemoryStorage (in-memory, lost on restart).
         encryption_key: Optional encryption key. If None, uses environment variable
             or generates ephemeral key.
         token_refresh_buffer_seconds: Number of seconds before token expiration to
@@ -84,10 +84,9 @@ class OAuthConfig(BaseModel):
     Example:
         ```python
         from frameio_kit import App, OAuthConfig
-        from key_value.aio.stores.disk import DiskStore
         import httpx
 
-        # Basic configuration
+        # Basic configuration (in-memory storage)
         app = App(
             oauth=OAuthConfig(
                 client_id=os.getenv("ADOBE_CLIENT_ID"),
@@ -96,12 +95,17 @@ class OAuthConfig(BaseModel):
         )
 
         # Full configuration
+        from frameio_kit._storage_dynamodb import DynamoDBStorage
+
         app = App(
             oauth=OAuthConfig(
                 client_id=os.getenv("ADOBE_CLIENT_ID"),
                 client_secret=os.getenv("ADOBE_CLIENT_SECRET"),
                 redirect_url="https://myapp.com/auth/callback",
-                storage=DiskStore(directory="./tokens"),
+                storage=DynamoDBStorage(
+                    table_name="oauth-tokens",
+                    region_name="us-east-1",
+                ),
                 token_refresh_buffer_seconds=600,  # Refresh 10 minutes early
                 http_client=httpx.AsyncClient(timeout=60.0),
             )
@@ -117,7 +121,7 @@ class OAuthConfig(BaseModel):
     scopes: list[str] = Field(
         default_factory=lambda: ["additional_info.roles", "offline_access", "profile", "email", "openid"]
     )
-    storage: Optional[AsyncKeyValue] = None
+    storage: Optional[Storage] = None
     encryption_key: Optional[str] = None
     token_refresh_buffer_seconds: int = 300  # 5 minutes default
     http_client: Optional[httpx.AsyncClient] = None
@@ -361,16 +365,16 @@ class TokenManager:
     a unified interface for token operations.
 
     Attributes:
-        storage: Storage backend instance (py-key-value-aio compatible).
+        storage: Storage backend instance.
         encryption: TokenEncryption instance for encrypting tokens at rest.
         token_refresh_buffer_seconds: Seconds before expiration to trigger refresh.
 
     Example:
         ```python
-        from key_value.aio.stores.memory import MemoryStore
+        from frameio_kit._storage import MemoryStorage
 
         token_manager = TokenManager(
-            storage=MemoryStore(),
+            storage=MemoryStorage(),
             encryption=TokenEncryption(),
             client_id="your_client_id",
             client_secret="your_client_secret",
@@ -389,7 +393,7 @@ class TokenManager:
 
     def __init__(
         self,
-        storage: AsyncKeyValue,
+        storage: Storage,
         encryption: TokenEncryption,
         client_id: str,
         client_secret: str,
@@ -400,7 +404,7 @@ class TokenManager:
         """Initialize TokenManager.
 
         Args:
-            storage: py-key-value-aio compatible storage backend.
+            storage: Storage backend instance.
             encryption: TokenEncryption instance.
             client_id: Adobe IMS client ID (for creating OAuth client when needed).
             client_secret: Adobe IMS client secret (for creating OAuth client when needed).
@@ -441,7 +445,7 @@ class TokenManager:
         return f"user:{user_id}"
 
     def _wrap_encrypted_bytes(self, encrypted_bytes: bytes) -> dict[str, str]:
-        """Wrap encrypted bytes in dict format for py-key-value-aio stores.
+        """Wrap encrypted bytes in dict format for storage.
 
         Args:
             encrypted_bytes: Fernet-encrypted token data.
@@ -454,7 +458,7 @@ class TokenManager:
         return {"encrypted_token": base64.b64encode(encrypted_bytes).decode("utf-8")}
 
     def _unwrap_encrypted_bytes(self, data: dict[str, str]) -> bytes:
-        """Unwrap encrypted bytes from py-key-value-aio dict format.
+        """Unwrap encrypted bytes from storage dict format.
 
         Args:
             data: Dictionary from storage containing encrypted token.

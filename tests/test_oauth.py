@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
-from key_value.aio.stores.memory import MemoryStore
+from frameio_kit._storage import MemoryStorage
 
 from frameio_kit._encryption import TokenEncryption
 from frameio_kit._oauth import (
@@ -43,7 +43,7 @@ def oauth_client(oauth_config: OAuthConfig) -> AdobeOAuthClient:
 @pytest.fixture
 async def token_manager() -> TokenManager:
     """Create TokenManager with in-memory storage."""
-    storage = MemoryStore()
+    storage = MemoryStorage()
     encryption = TokenEncryption(key=TokenEncryption.generate_key())
     return TokenManager(
         storage=storage,
