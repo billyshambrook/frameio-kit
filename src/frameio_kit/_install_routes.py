@@ -471,6 +471,32 @@ async def _install_uninstall(request: Request) -> Response:
         return HTMLResponse(html, status_code=500)
 
 
+async def _install_logout(request: Request) -> Response:
+    """POST /install/logout — Clear session and redirect to landing page."""
+    manager: InstallationManager = request.app.state.install_manager
+
+    # Delete session from storage if it exists
+    session_cookie = request.cookies.get("install_session")
+    if session_cookie:
+        from ._install_config import InstallConfig
+        from ._oauth import StateSerializer
+
+        config: InstallConfig = request.app.state.install_config
+        state_serializer: StateSerializer = request.app.state.state_serializer
+
+        try:
+            cookie_data = state_serializer.loads(session_cookie, max_age=config.session_ttl)
+            session_key = cookie_data.get("session_key")
+            if session_key:
+                await manager.storage.delete(f"install_session:{session_key}")
+        except (SignatureExpired, BadSignature):
+            pass
+
+    response = RedirectResponse(url="/install", status_code=303)
+    response.delete_cookie(key="install_session", path="/install")
+    return response
+
+
 def create_install_routes() -> list[Route]:
     """Create installation system routes.
 
@@ -480,6 +506,7 @@ def create_install_routes() -> list[Route]:
     return [
         Route("/install", _install_page, methods=["GET"]),
         Route("/install/login", _install_login, methods=["GET"]),
+        Route("/install/logout", _install_logout, methods=["POST"]),
         Route("/install/callback", _install_callback, methods=["GET"]),
         Route("/install/workspaces", _install_workspaces, methods=["GET"]),
         Route("/install/status", _install_status, methods=["GET"]),

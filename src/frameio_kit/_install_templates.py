@@ -101,7 +101,7 @@ _BASE_TEMPLATE = """\
                         <h1 class="text-xl font-bold">{{ config.app_name }}</h1>
                     </div>
                     {% if authenticated %}
-                    <form method="get" action="/install">
+                    <form method="post" action="/install/logout">
                         <button type="submit" class="text-sm text-gray-400 hover:text-gray-600">Logout</button>
                     </form>
                     {% endif %}
