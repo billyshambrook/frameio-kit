@@ -585,6 +585,44 @@ class TokenManager:
         return new_token
 
 
+def _extract_mount_prefix(request) -> str:
+    """Extract the mount prefix from a request path.
+
+    Strips known route suffixes to find the base mount prefix. Handles
+    both auth routes and install routes.
+
+    Args:
+        request: Starlette Request object.
+
+    Returns:
+        The mount prefix string (empty string for root mount).
+    """
+    current_path = str(request.url.path)
+
+    # Known route suffixes to strip (ordered longest-first for specificity)
+    known_suffixes = [
+        "/install/callback",
+        "/install/workspaces",
+        "/install/uninstall",
+        "/install/execute",
+        "/install/status",
+        "/install/login",
+        "/install",
+        "/auth/callback",
+        "/auth/login",
+    ]
+
+    for suffix in known_suffixes:
+        if current_path.endswith(suffix):
+            return current_path.removesuffix(suffix)
+
+    if current_path.endswith("/"):
+        return current_path.rstrip("/")
+
+    # Unknown path, assume root mount
+    return ""
+
+
 def infer_oauth_url(request, path: str) -> str:
     """Infer an OAuth URL from an incoming request.
 
@@ -609,20 +647,22 @@ def infer_oauth_url(request, path: str) -> str:
         infer_oauth_url(request, "/auth/login") -> "https://example.com/frameio/auth/login"
     """
     base = f"{request.url.scheme}://{request.url.netloc}"
-    current_path = str(request.url.path)
-
-    # Extract mount prefix by removing known OAuth paths or trailing slash
-    if current_path.endswith("/auth/login"):
-        mount_prefix = current_path.removesuffix("/auth/login")
-    elif current_path.endswith("/auth/callback"):
-        mount_prefix = current_path.removesuffix("/auth/callback")
-    elif current_path.endswith("/"):
-        mount_prefix = current_path.rstrip("/")
-    else:
-        # Unknown path, assume root mount
-        mount_prefix = ""
-
+    mount_prefix = _extract_mount_prefix(request)
     return f"{base}{mount_prefix}{path}"
+
+
+def infer_install_url(request) -> str:
+    """Infer the public base URL for webhook/action callbacks from a request.
+
+    Returns the scheme + netloc portion (e.g., "https://myapp.com").
+
+    Args:
+        request: Starlette Request object.
+
+    Returns:
+        The public base URL string.
+    """
+    return f"{request.url.scheme}://{request.url.netloc}"
 
 
 def get_oauth_redirect_url(oauth_config: OAuthConfig, request) -> str:

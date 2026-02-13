@@ -51,6 +51,7 @@ nav:
       - Client API: usage/client_api.md
       - Middleware: usage/middleware.md
       - User Authentication: usage/user_auth.md
+      - Installation System: usage/installation.md
   - API Reference: api_reference.md
 
 plugins:

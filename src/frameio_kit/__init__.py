@@ -13,6 +13,8 @@ from ._exceptions import (
     ConfigurationError,
     EventValidationError,
     FrameioKitError,
+    InstallationError,
+    InstallationNotFoundError,
     OAuthError,
     SecretResolutionError,
     SignatureVerificationError,
@@ -35,6 +37,8 @@ from ._responses import (
     TextareaField,
     TextField,
 )
+from ._install_config import InstallConfig
+from ._install_models import ActionRecord, Installation, WebhookRecord
 from ._security import verify_signature
 
 __all__ = [
@@ -62,11 +66,19 @@ __all__ = [
     "ConfigurationError",
     "EventValidationError",
     "FrameioKitError",
+    "InstallationError",
+    "InstallationNotFoundError",
     "OAuthError",
     "SecretResolutionError",
     "SignatureVerificationError",
     "TokenExchangeError",
     "TokenRefreshError",
+    # _install_config.py
+    "InstallConfig",
+    # _install_models.py
+    "ActionRecord",
+    "Installation",
+    "WebhookRecord",
     # _middleware.py
     "Middleware",
     "NextFunc",

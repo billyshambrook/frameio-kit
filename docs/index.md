@@ -56,6 +56,7 @@ async def analyze_file(event: ActionEvent):
 - **[User Authentication](usage/user_auth.md)** - Enable Adobe Login OAuth for user-specific actions
 
 ### **Advanced Features**
+- **[Installation System](usage/installation.md)** - Self-service installation pages for workspace admins with branded UI
 - **[Mounting to Existing Apps](usage/mounting.md)** - Integrate with FastAPI, Starlette, or any ASGI framework
 - **[API Reference](api_reference.md)** - Complete documentation for all classes and methods
 - **Type safety** - Full Pydantic models for all event types

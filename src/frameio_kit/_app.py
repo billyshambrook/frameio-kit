@@ -51,6 +51,7 @@ from ._exceptions import (
     SecretResolutionError,
     SignatureVerificationError,
 )
+from ._install_config import InstallConfig
 from ._middleware import Middleware
 from ._oauth import OAuthConfig, TokenManager, infer_oauth_url
 from ._oauth_manager import OAuthManager
@@ -111,6 +112,7 @@ class App:
         middleware: list[Middleware] | None = None,
         oauth: OAuthConfig | None = None,
         secret_resolver: SecretResolver | None = None,
+        install: InstallConfig | None = None,
     ) -> None:
         """Initializes the App.
 
@@ -129,19 +131,54 @@ class App:
                 the SecretResolver protocol. Provides dynamic secret resolution
                 for webhooks and actions. Falls back to environment variables if
                 not provided.
+            install: Optional installation system configuration. When provided,
+                enables the self-service ``/install`` page for workspace admins
+                to install, update, and uninstall webhooks and custom actions.
+                Requires ``oauth`` to also be configured.
         """
         self._token = token
         self._middleware = middleware or []
         self._oauth_config = oauth
         self._secret_resolver = secret_resolver
+        self._install_config = install
         self._api_client: Client | None = None
         self._webhook_handlers: dict[str, _HandlerRegistration] = {}
         self._action_handlers: dict[str, _HandlerRegistration] = {}
+
+        # Validate install requires oauth
+        if self._install_config and not self._oauth_config:
+            raise ConfigurationError("Installation system requires OAuth to be configured.")
 
         # Initialize OAuth manager if configured
         self._oauth_manager: OAuthManager | None = None
         if self._oauth_config:
             self._oauth_manager = OAuthManager(self._oauth_config)
+
+        # Initialize install components if configured
+        self._install_manager = None
+        self._install_secret_resolver = None
+        self._template_renderer = None
+        if self._install_config and self._oauth_manager and self._oauth_config:
+            from ._encryption import TokenEncryption
+            from ._install_manager import InstallationManager
+            from ._install_secret_resolver import InstallationSecretResolver
+            from ._install_templates import TemplateRenderer
+            from ._storage import MemoryStorage
+
+            storage = self._oauth_config.storage if self._oauth_config.storage else MemoryStorage()
+            encryption = TokenEncryption(key=self._oauth_config.encryption_key)
+
+            self._install_manager = InstallationManager(
+                storage=storage,
+                encryption=encryption,
+                install_config=self._install_config,
+            )
+            self._template_renderer = TemplateRenderer(install_config=self._install_config)
+
+            # Auto-wire secret resolver if user didn't provide one
+            if self._secret_resolver is None:
+                self._install_secret_resolver = InstallationSecretResolver(self._install_manager)
+                self._secret_resolver = self._install_secret_resolver
 
         # Request handler for parsing and validation
         self._request_handler = RequestHandler()
@@ -382,6 +419,15 @@ class App:
             app.state.oauth_client = self._oauth_manager.oauth_client
             app.state.state_serializer = self._oauth_manager.state_serializer
 
+        # Store install components in app state for route access
+        if self._install_config and self._install_manager and self._template_renderer:
+            app.state.install_manager = self._install_manager
+            app.state.install_config = self._install_config
+            app.state.template_renderer = self._template_renderer
+            app.state.handler_manifest = self._install_manager.build_manifest(
+                self._webhook_handlers, self._action_handlers
+            )
+
         yield
 
         # Cleanup resources with error handling for each
@@ -412,6 +458,13 @@ class App:
         if self._oauth_manager:
             auth_routes = create_auth_routes()
             routes.extend(auth_routes)
+
+        # Add install routes if configured
+        if self._install_config:
+            from ._install_routes import create_install_routes
+
+            install_routes = create_install_routes()
+            routes.extend(install_routes)
 
         return Starlette(
             debug=False,
