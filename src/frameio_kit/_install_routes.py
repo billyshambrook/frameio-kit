@@ -93,6 +93,9 @@ def _infer_base_url(request: Request, config: Any) -> str:
 async def _paginate_all(coro_factory, *args, **kwargs) -> list:
     """Paginate through all results from an SDK list endpoint.
 
+    The SDK returns an AsyncPager that supports async iteration and
+    handles pagination automatically.
+
     Args:
         coro_factory: The async method to call (e.g., client.accounts.index).
         *args: Positional args to pass to the method.
@@ -101,32 +104,8 @@ async def _paginate_all(coro_factory, *args, **kwargs) -> list:
     Returns:
         Combined list of all data items across pages.
     """
-    all_items: list = []
-    after = None
-
-    while True:
-        if after:
-            response = await coro_factory(*args, after=after, page_size=50, **kwargs)
-        else:
-            response = await coro_factory(*args, page_size=50, **kwargs)
-
-        all_items.extend(response.data)
-
-        if response.links.next is None:
-            break
-
-        # Extract 'after' cursor from the next link
-        import urllib.parse
-
-        parsed = urllib.parse.urlparse(response.links.next)
-        params = urllib.parse.parse_qs(parsed.query)
-        after_values = params.get("after")
-        if after_values:
-            after = after_values[0]
-        else:
-            break
-
-    return all_items
+    pager = await coro_factory(*args, **kwargs)
+    return [item async for item in pager]
 
 
 async def _install_page(request: Request) -> Response:
