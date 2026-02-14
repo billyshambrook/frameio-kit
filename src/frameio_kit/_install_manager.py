@@ -134,7 +134,6 @@ class InstallationManager:
         token: str,
         account_id: str,
         workspace_id: str,
-        user_id: str,
         base_url: str,
         manifest: HandlerManifest,
     ) -> Installation:
@@ -147,7 +146,6 @@ class InstallationManager:
             token: OAuth access token of the installing user.
             account_id: Frame.io account ID.
             workspace_id: Frame.io workspace ID.
-            user_id: User ID of the installing admin.
             base_url: Public callback URL for webhooks/actions.
             manifest: What handlers need to be installed.
 
@@ -209,7 +207,6 @@ class InstallationManager:
                 workspace_id=workspace_id,
                 installed_at=now,
                 updated_at=now,
-                installed_by_user_id=user_id,
                 webhook=webhook_record,
                 actions=action_records,
             )

@@ -23,7 +23,6 @@ class InstallSession(TypedDict):
     """Session data stored in Storage for an authenticated install user."""
 
     access_token: str
-    user_id: str
 
 
 async def _get_session(request: Request) -> InstallSession | None:
@@ -70,7 +69,6 @@ async def _get_session(request: Request) -> InstallSession | None:
 
     return InstallSession(
         access_token=access_token,
-        user_id=session_data["user_id"],
     )
 
 
@@ -226,7 +224,6 @@ async def _install_callback(request: Request) -> Response:
     encrypted_token = encryption.encrypt(token_data.access_token.encode())
     session_record = {
         "encrypted_access_token": base64.b64encode(encrypted_token).decode("utf-8"),
-        "user_id": token_data.user_id,
     }
 
     await manager.storage.put(
@@ -369,7 +366,6 @@ async def _install_execute(request: Request) -> Response:
                 token=session["access_token"],
                 account_id=account_id,
                 workspace_id=workspace_id,
-                user_id=session["user_id"],
                 base_url=base_url,
                 manifest=manifest,
             )

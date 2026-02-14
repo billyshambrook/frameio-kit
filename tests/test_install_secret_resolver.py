@@ -65,7 +65,6 @@ class TestGetWebhookSecret:
             workspace_id="ws-1",
             installed_at=now,
             updated_at=now,
-            installed_by_user_id="user-1",
             webhook=WebhookRecord(
                 webhook_id="wh-1",
                 secret="webhook-secret-123",
@@ -92,7 +91,6 @@ class TestGetWebhookSecret:
             workspace_id="ws-1",
             installed_at=now,
             updated_at=now,
-            installed_by_user_id="user-1",
             webhook=None,
             actions=[],
         )
@@ -111,7 +109,6 @@ class TestGetActionSecret:
             workspace_id="ws-1",
             installed_at=now,
             updated_at=now,
-            installed_by_user_id="user-1",
             webhook=None,
             actions=[
                 ActionRecord(
@@ -154,7 +151,6 @@ class TestGetActionSecret:
             workspace_id="ws-1",
             installed_at=now,
             updated_at=now,
-            installed_by_user_id="user-1",
             webhook=None,
             actions=[
                 ActionRecord(

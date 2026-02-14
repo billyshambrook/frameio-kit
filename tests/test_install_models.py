@@ -65,7 +65,6 @@ class TestInstallation:
             workspace_id="ws-1",
             installed_at=now,
             updated_at=now,
-            installed_by_user_id="user-1",
             webhook=WebhookRecord(
                 webhook_id="wh-1",
                 secret="s1",
@@ -98,7 +97,6 @@ class TestInstallation:
             workspace_id="ws-1",
             installed_at=now,
             updated_at=now,
-            installed_by_user_id="user-1",
             webhook=None,
             actions=[],
         )

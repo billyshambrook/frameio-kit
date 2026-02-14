@@ -97,7 +97,6 @@ class TestGetInstallation:
             workspace_id="ws-1",
             installed_at=now,
             updated_at=now,
-            installed_by_user_id="user-1",
             webhook=WebhookRecord(
                 webhook_id="wh-1",
                 secret=webhook_secret,
@@ -159,7 +158,6 @@ class TestInstall:
                 token="test-token",
                 account_id="acc-1",
                 workspace_id="ws-1",
-                user_id="user-1",
                 base_url="https://myapp.com",
                 manifest=manifest,
             )
@@ -202,7 +200,6 @@ class TestInstall:
                 token="test-token",
                 account_id="acc-1",
                 workspace_id="ws-1",
-                user_id="user-1",
                 base_url="https://myapp.com",
                 manifest=manifest,
             )
@@ -219,7 +216,6 @@ class TestUpdate:
             workspace_id="ws-1",
             installed_at=now,
             updated_at=now,
-            installed_by_user_id="user-1",
             webhook=WebhookRecord(
                 webhook_id="wh-1",
                 secret="wh-secret",
@@ -263,7 +259,6 @@ class TestUpdate:
             workspace_id="ws-1",
             installed_at=now,
             updated_at=now,
-            installed_by_user_id="user-1",
             webhook=None,
             actions=[
                 ActionRecord(
@@ -318,7 +313,6 @@ class TestUpdate:
             workspace_id="ws-1",
             installed_at=now,
             updated_at=now,
-            installed_by_user_id="user-1",
             webhook=None,
             actions=[
                 ActionRecord(
@@ -360,7 +354,6 @@ class TestUpdate:
             workspace_id="ws-1",
             installed_at=now,
             updated_at=now,
-            installed_by_user_id="user-1",
             webhook=None,
             actions=[
                 ActionRecord(
@@ -417,7 +410,6 @@ class TestUninstall:
             workspace_id="ws-1",
             installed_at=now,
             updated_at=now,
-            installed_by_user_id="user-1",
             webhook=WebhookRecord(
                 webhook_id="wh-1",
                 secret="wh-secret",
@@ -467,7 +459,6 @@ class TestNeedsUpdate:
             workspace_id="ws-1",
             installed_at=now,
             updated_at=now,
-            installed_by_user_id="user-1",
             webhook=WebhookRecord(
                 webhook_id="wh-1",
                 secret="s",
@@ -500,7 +491,6 @@ class TestNeedsUpdate:
             workspace_id="ws-1",
             installed_at=now,
             updated_at=now,
-            installed_by_user_id="user-1",
             webhook=WebhookRecord(
                 webhook_id="wh-1",
                 secret="s",
@@ -524,7 +514,6 @@ class TestComputeDiff:
             workspace_id="ws-1",
             installed_at=now,
             updated_at=now,
-            installed_by_user_id="user-1",
             webhook=WebhookRecord(
                 webhook_id="wh-1",
                 secret="s",

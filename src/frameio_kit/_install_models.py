@@ -53,7 +53,6 @@ class Installation(BaseModel):
         workspace_id: Frame.io workspace ID.
         installed_at: When the installation was first created.
         updated_at: When the installation was last updated.
-        installed_by_user_id: User ID of the admin who installed the app.
         webhook: The consolidated webhook record, if any webhook handlers exist.
         actions: List of custom action records, one per action handler.
     """
@@ -62,7 +61,6 @@ class Installation(BaseModel):
     workspace_id: str
     installed_at: datetime
     updated_at: datetime
-    installed_by_user_id: str
     webhook: WebhookRecord | None = None
     actions: list[ActionRecord] = []
 
