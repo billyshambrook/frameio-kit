@@ -90,7 +90,7 @@ app = App(
 ```python
 import time
 from frameio_kit import App, Middleware, WebhookEvent, Message
-from frameio_kit.middleware import AnyEvent, NextFunc, AnyResponse
+from frameio_kit import AnyEvent, NextFunc, AnyResponse
 
 class TimingMiddleware(Middleware):
     async def __call__(self, event: AnyEvent, next: NextFunc) -> AnyResponse:
@@ -117,7 +117,7 @@ async def on_file_ready(event: WebhookEvent):
 
 ```python
 from frameio_kit import App, Middleware, WebhookEvent, ActionEvent, Message
-from frameio_kit.middleware import NextFunc, AnyResponse
+from frameio_kit import NextFunc, AnyResponse
 
 class LoggingMiddleware(Middleware):
     async def on_webhook(self, event: WebhookEvent, next: NextFunc) -> AnyResponse:
@@ -125,7 +125,7 @@ class LoggingMiddleware(Middleware):
         return await next(event)
     
     async def on_action(self, event: ActionEvent, next: NextFunc) -> AnyResponse:
-        print(f"Action: {event.type} by {event.user.name}")
+        print(f"Action: {event.type} by {event.user.id}")
         return await next(event)
 
 class ValidationMiddleware(Middleware):
@@ -144,7 +144,7 @@ app = App(
 async def on_file_ready(event: WebhookEvent):
     print("File ready")
 
-@app.on_action("my_app.analyze", "Analyze", "Analyze file", os.environ["ACTION_SECRET"])
+@app.on_action("my_app.analyze", name="Analyze", description="Analyze file", secret=os.environ["ACTION_SECRET"])
 async def analyze_file(event: ActionEvent):
     return Message(title="Analysis Complete", description="Done!")
 ```

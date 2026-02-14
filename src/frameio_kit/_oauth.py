@@ -7,17 +7,17 @@ System (IMS), including authorization flow, token exchange, and automatic token 
 import logging
 import os
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from collections.abc import Mapping
 from typing import Any, Optional
 
 import httpx
 from itsdangerous import URLSafeTimedSerializer
-from key_value.aio.protocols import AsyncKeyValue
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from ._encryption import TokenEncryption
 from ._exceptions import TokenExchangeError, TokenRefreshError
+from ._storage import Storage
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +43,13 @@ class TokenData(BaseModel):
     scopes: list[str]
     user_id: str
 
+    @field_validator("expires_at", mode="before")
+    @classmethod
+    def _ensure_utc(cls, v: datetime) -> datetime:
+        if isinstance(v, datetime) and v.tzinfo is None:
+            return v.replace(tzinfo=timezone.utc)
+        return v
+
     def is_expired(self, buffer_seconds: int = 300) -> bool:
         """Check if the access token is expired or will expire soon.
 
@@ -53,14 +60,16 @@ class TokenData(BaseModel):
         Returns:
             True if the token is expired or will expire within the buffer period.
         """
-        return datetime.now() >= (self.expires_at - timedelta(seconds=buffer_seconds))
+        return datetime.now(tz=timezone.utc) >= (self.expires_at - timedelta(seconds=buffer_seconds))
 
 
 class OAuthConfig(BaseModel):
     """OAuth configuration for Adobe IMS authentication.
 
     This configuration is provided at the application level to enable user
-    authentication via Adobe Login OAuth 2.0 flow.
+    authentication via Adobe Login OAuth 2.0 flow. Contains only OAuth-specific
+    credentials and settings. Storage and encryption are configured at the
+    ``App`` level.
 
     Attributes:
         client_id: Adobe IMS application client ID from Adobe Developer Console.
@@ -70,10 +79,6 @@ class OAuthConfig(BaseModel):
             Set this explicitly when behind a reverse proxy or when the public URL
             differs from what the application sees. Must be registered in Adobe Console.
         scopes: List of OAuth scopes to request. Defaults to Frame.io API access.
-        storage: Storage backend instance for persisting encrypted tokens. If None,
-            defaults to MemoryStore (in-memory, lost on restart).
-        encryption_key: Optional encryption key. If None, uses environment variable
-            or generates ephemeral key.
         token_refresh_buffer_seconds: Number of seconds before token expiration to
             trigger automatic refresh. Defaults to 300 seconds (5 minutes). This
             prevents token expiration during ongoing API calls.
@@ -84,27 +89,12 @@ class OAuthConfig(BaseModel):
     Example:
         ```python
         from frameio_kit import App, OAuthConfig
-        from key_value.aio.stores.disk import DiskStore
-        import httpx
 
-        # Basic configuration
         app = App(
             oauth=OAuthConfig(
                 client_id=os.getenv("ADOBE_CLIENT_ID"),
                 client_secret=os.getenv("ADOBE_CLIENT_SECRET"),
-            )
-        )
-
-        # Full configuration
-        app = App(
-            oauth=OAuthConfig(
-                client_id=os.getenv("ADOBE_CLIENT_ID"),
-                client_secret=os.getenv("ADOBE_CLIENT_SECRET"),
-                redirect_url="https://myapp.com/auth/callback",
-                storage=DiskStore(directory="./tokens"),
-                token_refresh_buffer_seconds=600,  # Refresh 10 minutes early
-                http_client=httpx.AsyncClient(timeout=60.0),
-            )
+            ),
         )
         ```
     """
@@ -117,8 +107,7 @@ class OAuthConfig(BaseModel):
     scopes: list[str] = Field(
         default_factory=lambda: ["additional_info.roles", "offline_access", "profile", "email", "openid"]
     )
-    storage: Optional[AsyncKeyValue] = None
-    encryption_key: Optional[str] = None
+    ims_url: str = "https://ims-na1.adobelogin.com"
     token_refresh_buffer_seconds: int = 300  # 5 minutes default
     http_client: Optional[httpx.AsyncClient] = None
 
@@ -163,6 +152,7 @@ class AdobeOAuthClient:
         client_id: str,
         client_secret: str,
         scopes: list[str] | None = None,
+        ims_url: str = "https://ims-na1.adobelogin.com",
         http_client: httpx.AsyncClient | None = None,
     ) -> None:
         """Initialize Adobe OAuth client.
@@ -171,6 +161,8 @@ class AdobeOAuthClient:
             client_id: Adobe IMS application client ID.
             client_secret: Adobe IMS application client secret.
             scopes: List of OAuth scopes. Defaults to Frame.io API access.
+            ims_url: Base URL for Adobe IMS. Defaults to
+                ``https://ims-na1.adobelogin.com``.
             http_client: Optional httpx.AsyncClient for HTTP requests. If not provided,
                 a new client will be created with default settings (30s timeout).
                 Providing your own client allows connection pooling and custom configuration.
@@ -180,8 +172,9 @@ class AdobeOAuthClient:
         self.scopes = scopes or ["additional_info.roles", "offline_access", "profile", "email", "openid"]
 
         # Adobe IMS OAuth 2.0 endpoints
-        self.authorization_url = "https://ims-na1.adobelogin.com/ims/authorize/v2"
-        self.token_url = "https://ims-na1.adobelogin.com/ims/token/v3"
+        ims_base = ims_url.rstrip("/")
+        self.authorization_url = f"{ims_base}/ims/authorize/v2"
+        self.token_url = f"{ims_base}/ims/token/v3"
 
         # Use provided client or create our own
         self._http = http_client or httpx.AsyncClient(timeout=30.0)
@@ -262,7 +255,7 @@ class AdobeOAuthClient:
         return TokenData(
             access_token=access_token,
             refresh_token=refresh_token,
-            expires_at=datetime.now() + timedelta(seconds=expires_in),
+            expires_at=datetime.now(tz=timezone.utc) + timedelta(seconds=expires_in),
             scopes=scopes,
             user_id="",  # Will be set by TokenManager
         )
@@ -361,16 +354,16 @@ class TokenManager:
     a unified interface for token operations.
 
     Attributes:
-        storage: Storage backend instance (py-key-value-aio compatible).
+        storage: Storage backend instance.
         encryption: TokenEncryption instance for encrypting tokens at rest.
         token_refresh_buffer_seconds: Seconds before expiration to trigger refresh.
 
     Example:
         ```python
-        from key_value.aio.stores.memory import MemoryStore
+        from frameio_kit._storage import MemoryStorage
 
         token_manager = TokenManager(
-            storage=MemoryStore(),
+            storage=MemoryStorage(),
             encryption=TokenEncryption(),
             client_id="your_client_id",
             client_secret="your_client_secret",
@@ -389,22 +382,24 @@ class TokenManager:
 
     def __init__(
         self,
-        storage: AsyncKeyValue,
+        storage: Storage,
         encryption: TokenEncryption,
         client_id: str,
         client_secret: str,
         scopes: list[str] | None = None,
+        ims_url: str = "https://ims-na1.adobelogin.com",
         http_client: httpx.AsyncClient | None = None,
         token_refresh_buffer_seconds: int = 300,
     ) -> None:
         """Initialize TokenManager.
 
         Args:
-            storage: py-key-value-aio compatible storage backend.
+            storage: Storage backend instance.
             encryption: TokenEncryption instance.
             client_id: Adobe IMS client ID (for creating OAuth client when needed).
             client_secret: Adobe IMS client secret (for creating OAuth client when needed).
             scopes: OAuth scopes (for creating OAuth client when needed).
+            ims_url: Base URL for Adobe IMS.
             http_client: Optional httpx.AsyncClient (for creating OAuth client when needed).
             token_refresh_buffer_seconds: Seconds before expiration to refresh tokens.
                 Defaults to 300 seconds (5 minutes).
@@ -414,6 +409,7 @@ class TokenManager:
         self._client_id = client_id
         self._client_secret = client_secret
         self._scopes = scopes
+        self._ims_url = ims_url
         self._http_client = http_client
         self.token_refresh_buffer_seconds = token_refresh_buffer_seconds
         self._oauth_client: AdobeOAuthClient | None = None
@@ -425,6 +421,7 @@ class TokenManager:
                 client_id=self._client_id,
                 client_secret=self._client_secret,
                 scopes=self._scopes,
+                ims_url=self._ims_url,
                 http_client=self._http_client,
             )
         return self._oauth_client
@@ -441,7 +438,7 @@ class TokenManager:
         return f"user:{user_id}"
 
     def _wrap_encrypted_bytes(self, encrypted_bytes: bytes) -> dict[str, str]:
-        """Wrap encrypted bytes in dict format for py-key-value-aio stores.
+        """Wrap encrypted bytes in dict format for storage.
 
         Args:
             encrypted_bytes: Fernet-encrypted token data.
@@ -454,7 +451,7 @@ class TokenManager:
         return {"encrypted_token": base64.b64encode(encrypted_bytes).decode("utf-8")}
 
     def _unwrap_encrypted_bytes(self, data: dict[str, str]) -> bytes:
-        """Unwrap encrypted bytes from py-key-value-aio dict format.
+        """Unwrap encrypted bytes from storage dict format.
 
         Args:
             data: Dictionary from storage containing encrypted token.
@@ -500,7 +497,8 @@ class TokenManager:
             return None
 
         encrypted = self._unwrap_encrypted_bytes(encrypted_dict)
-        token_data = self.encryption.decrypt(encrypted)
+        decrypted = self.encryption.decrypt(encrypted)
+        token_data = TokenData.model_validate_json(decrypted)
 
         # Check if needs refresh using configured buffer
         if token_data.is_expired(buffer_seconds=self.token_refresh_buffer_seconds):
@@ -531,12 +529,12 @@ class TokenManager:
         token_data.user_id = user_id
         key = self._make_key(user_id)
 
-        encrypted = self.encryption.encrypt(token_data)
+        encrypted = self.encryption.encrypt(token_data.model_dump_json().encode())
         wrapped = self._wrap_encrypted_bytes(encrypted)
 
         # TTL: token lifetime + 1 day buffer for refresh
         # Ensure TTL is never negative (can happen with already-expired tokens during testing)
-        ttl = max(0, int((token_data.expires_at - datetime.now()).total_seconds()) + 86400)
+        ttl = max(0, int((token_data.expires_at - datetime.now(tz=timezone.utc)).total_seconds()) + 86400)
 
         await self.storage.put(key, wrapped, ttl=ttl)
 
@@ -573,6 +571,45 @@ class TokenManager:
         return new_token
 
 
+def _extract_mount_prefix(request) -> str:
+    """Extract the mount prefix from a request path.
+
+    Strips known route suffixes to find the base mount prefix. Handles
+    both auth routes and install routes.
+
+    Args:
+        request: Starlette Request object.
+
+    Returns:
+        The mount prefix string (empty string for root mount).
+    """
+    current_path = str(request.url.path)
+
+    # Known route suffixes to strip (ordered longest-first for specificity)
+    known_suffixes = [
+        "/install/callback",
+        "/install/workspaces",
+        "/install/uninstall",
+        "/install/execute",
+        "/install/status",
+        "/install/logout",
+        "/install/login",
+        "/install",
+        "/auth/callback",
+        "/auth/login",
+    ]
+
+    for suffix in known_suffixes:
+        if current_path.endswith(suffix):
+            return current_path.removesuffix(suffix)
+
+    if current_path.endswith("/"):
+        return current_path.rstrip("/")
+
+    # Unknown path, assume root mount
+    return ""
+
+
 def infer_oauth_url(request, path: str) -> str:
     """Infer an OAuth URL from an incoming request.
 
@@ -597,19 +634,35 @@ def infer_oauth_url(request, path: str) -> str:
         infer_oauth_url(request, "/auth/login") -> "https://example.com/frameio/auth/login"
     """
     base = f"{request.url.scheme}://{request.url.netloc}"
-    current_path = str(request.url.path)
+    mount_prefix = _extract_mount_prefix(request)
+    return f"{base}{mount_prefix}{path}"
 
-    # Extract mount prefix by removing known OAuth paths or trailing slash
-    if current_path.endswith("/auth/login"):
-        mount_prefix = current_path.removesuffix("/auth/login")
-    elif current_path.endswith("/auth/callback"):
-        mount_prefix = current_path.removesuffix("/auth/callback")
-    elif current_path.endswith("/"):
-        mount_prefix = current_path.rstrip("/")
-    else:
-        # Unknown path, assume root mount
-        mount_prefix = ""
 
+def infer_install_url(request, path: str = "") -> str:
+    """Infer an install URL from an incoming request.
+
+    Extracts the base URL (scheme + netloc) and mount prefix from the request,
+    then constructs the specified path.
+
+    Args:
+        request: Starlette Request object.
+        path: Optional path to append (e.g., "/install/callback").
+
+    Returns:
+        Full URL string.
+
+    Example:
+        # App mounted at root
+        infer_install_url(request) -> "https://example.com"
+
+        # App mounted at /frameio
+        infer_install_url(request) -> "https://example.com/frameio"
+
+        # With path
+        infer_install_url(request, "/install/callback") -> "https://example.com/frameio/install/callback"
+    """
+    base = f"{request.url.scheme}://{request.url.netloc}"
+    mount_prefix = _extract_mount_prefix(request)
     return f"{base}{mount_prefix}{path}"
 
 

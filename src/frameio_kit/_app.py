@@ -14,9 +14,7 @@ Example:
     import os
 
     import uvicorn
-    from frameio_kit.app import App
-    from frameio_kit.events import WebhookEvent
-    from frameio_kit.ui import Message
+    from frameio_kit import App, WebhookEvent, Message
 
     # Initialize the app, optionally with a token for API calls
     app = App(token=os.getenv("FRAMEIO_TOKEN"))
@@ -35,7 +33,7 @@ import functools
 import logging
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import AsyncGenerator, Awaitable, Callable, cast
+from typing import Awaitable, Callable, cast
 
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -65,6 +63,7 @@ from ._secret_resolver import (
     WebhookSecretResolver,
     resolve_secret_at_decorator_time,
 )
+from ._storage import Storage
 
 logger = logging.getLogger(__name__)
 
@@ -76,8 +75,18 @@ WebhookHandlerFunc = Callable[[WebhookEvent], Awaitable[None]]
 # It can return a Message, a Form for further input, or nothing.
 ActionHandlerFunc = Callable[[ActionEvent], Awaitable[AnyResponse]]
 
-# Re-export for backwards compatibility
-SecretResolver = SecretResolverProtocol
+
+@dataclass(frozen=True)
+class _BrandingConfig:
+    """Internal branding configuration shared between install UI and auth pages."""
+
+    name: str
+    description: str
+    logo_url: str | None
+    primary_color: str
+    accent_color: str
+    custom_css: str | None
+    show_powered_by: bool
 
 
 @dataclass
@@ -109,41 +118,132 @@ class App:
     def __init__(
         self,
         *,
+        # API access
         token: str | None = None,
+        api_url: str | None = None,
         middleware: list[Middleware] | None = None,
+        # OAuth credentials
         oauth: OAuthConfig | None = None,
-        secret_resolver: SecretResolver | None = None,
+        # Shared infrastructure (used by both OAuth token storage and install records)
+        storage: Storage | None = None,
+        encryption_key: str | None = None,
+        # Install system
+        install: bool = False,
+        install_session_ttl: int = 1800,
+        base_url: str | None = None,
+        allowed_accounts: list[str] | None = None,
+        # Branding (used by both install UI and auth callback pages)
+        name: str | None = None,
+        description: str = "",
+        logo_url: str | None = None,
+        primary_color: str = "#6366f1",
+        accent_color: str = "#8b5cf6",
+        custom_css: str | None = None,
+        show_powered_by: bool = True,
     ) -> None:
-        """Initializes the FrameApp.
+        """Initializes the App.
 
         Args:
             token: An optional access token obtained from the Adobe Developer
                 Console. If provided, this token will be used to authenticate
-                API calls made via the `app.client` property. It is highly
-                recommended to load this from a secure source, such as an
-                environment variable.
+                API calls made via the ``app.client`` property.
+            api_url: Optional base URL for the Frame.io API. Defaults to
+                ``https://api.frame.io``. Override this for testing or to
+                target a different API environment.
             middleware: An optional list of middleware classes to process
                 requests before they reach the handler.
             oauth: Optional OAuth configuration for user authentication. When
                 provided, enables Adobe Login OAuth flow for actions that
                 require user-specific authentication.
-            secret_resolver: Optional app-level secret resolver that implements
-                the SecretResolver protocol. Provides dynamic secret resolution
-                for webhooks and actions. Falls back to environment variables if
-                not provided.
+            storage: Storage backend instance for persisting encrypted tokens
+                and install records. If None, defaults to MemoryStorage.
+            encryption_key: Optional encryption key for token storage. If None,
+                uses FRAMEIO_AUTH_ENCRYPTION_KEY env var or generates ephemeral key.
+            install: Whether to enable the self-service ``/install`` page.
+                Requires ``oauth`` to also be configured.
+            install_session_ttl: Install session TTL in seconds. Defaults to
+                30 minutes (1800).
+            base_url: Explicit public URL for the app. If not set, the URL is
+                inferred from incoming requests.
+            allowed_accounts: Optional list of Frame.io account IDs that are
+                permitted to install the app. When set, only these accounts
+                are shown in the install UI and install/uninstall requests
+                for other accounts are rejected. When None (default), all
+                accounts are available.
+            name: Display name shown in the install and auth UI headers.
+                Defaults to ``"Authentication"`` when None.
+            description: Description shown on the landing page.
+            logo_url: URL to the partner logo image.
+            primary_color: Hex color code for primary branding.
+            accent_color: Hex color code for accent/secondary highlights.
+            custom_css: Raw CSS string injected into page templates.
+            show_powered_by: Whether to show "Powered by frameio-kit" footer.
         """
         self._token = token
+        self._api_url = api_url
         self._middleware = middleware or []
         self._oauth_config = oauth
-        self._secret_resolver = secret_resolver
+        self._storage = storage
+        self._encryption_key = encryption_key
+        self._install_enabled = install
+        self._install_session_ttl = install_session_ttl
+        self._base_url = base_url
+        self._allowed_accounts = allowed_accounts
         self._api_client: Client | None = None
         self._webhook_handlers: dict[str, _HandlerRegistration] = {}
         self._action_handlers: dict[str, _HandlerRegistration] = {}
 
+        # Build branding config
+        self._branding = _BrandingConfig(
+            name=name if name is not None else "Authentication",
+            description=description,
+            logo_url=logo_url,
+            primary_color=primary_color,
+            accent_color=accent_color,
+            custom_css=custom_css,
+            show_powered_by=show_powered_by,
+        )
+
+        # Validate install requires oauth
+        if self._install_enabled and not self._oauth_config:
+            raise ConfigurationError("Installation system requires OAuth to be configured.")
+
         # Initialize OAuth manager if configured
         self._oauth_manager: OAuthManager | None = None
         if self._oauth_config:
-            self._oauth_manager = OAuthManager(self._oauth_config)
+            self._oauth_manager = OAuthManager(
+                self._oauth_config,
+                storage=self._storage,
+                encryption_key=self._encryption_key,
+            )
+
+        # Initialize install components if configured
+        self._install_manager = None
+        self._install_secret_resolver = None
+        self._secret_resolver: SecretResolverProtocol | None = None
+        self._template_renderer = None
+        if self._install_enabled and self._oauth_manager and self._oauth_config:
+            from ._encryption import TokenEncryption
+            from ._install_manager import InstallationManager
+            from ._install_secret_resolver import InstallationSecretResolver
+            from ._install_templates import TemplateRenderer
+            from ._storage import MemoryStorage
+
+            resolved_storage = self._storage if self._storage else MemoryStorage()
+            encryption = TokenEncryption(key=self._encryption_key)
+
+            self._install_manager = InstallationManager(
+                storage=resolved_storage,
+                encryption=encryption,
+                app_name=self._branding.name,
+                base_url=self._api_url,
+                allowed_accounts=self._allowed_accounts,
+            )
+            self._template_renderer = TemplateRenderer(branding=self._branding)
+
+            # Auto-wire secret resolver
+            self._install_secret_resolver = InstallationSecretResolver(self._install_manager)
+            self._secret_resolver = self._install_secret_resolver
 
         # Request handler for parsing and validation
         self._request_handler = RequestHandler()
@@ -171,12 +271,12 @@ class App:
             An instance of Frame.io `Client`, ready to make authenticated requests.
 
         Raises:
-            RuntimeError: If the `App` was initialized without an `token`.
+            RuntimeError: If the `App` was initialized without a `token`.
         """
         if not self._token:
             raise RuntimeError("Cannot access API client. `token` was not provided to App.")
         if self._api_client is None:
-            self._api_client = Client(token=self._token)
+            self._api_client = Client(token=self._token, base_url=self._api_url)
         return self._api_client
 
     @property
@@ -239,8 +339,7 @@ class App:
 
         This decorator registers an asynchronous function to be called whenever
         Frame.io sends a webhook event of the specified type(s). A webhook
-        handler can only receive `WebhookEvent` and can only return a `Message`
-        or `None`.
+        handler receives a `WebhookEvent` and must return `None`.
 
         Example:
             ```python
@@ -298,10 +397,10 @@ class App:
     def on_action(
         self,
         event_type: str,
+        *,
         name: str,
         description: str,
         secret: str | ActionSecretResolver | None = None,
-        *,
         require_user_auth: bool = False,
     ):
         """Decorator to register a function as a custom action handler.
@@ -317,7 +416,7 @@ class App:
             app = App()
 
             # Using explicit secret string
-            @app.on_action(event_type="my_app.transcribe", name="Transcribe", description="Transcribe file", secret="your-secret")
+            @app.on_action("my_app.transcribe", name="Transcribe", description="Transcribe file", secret="your-secret")
             async def on_transcribe(event: ActionEvent):
                 pass
 
@@ -325,12 +424,12 @@ class App:
             async def resolve_secret(event: ActionEvent) -> str:
                 return await db.get_secret(event.resource.id)
 
-            @app.on_action(event_type="my_app.convert", name="Convert", description="Convert file", secret=resolve_secret)
+            @app.on_action("my_app.convert", name="Convert", description="Convert file", secret=resolve_secret)
             async def on_convert(event: ActionEvent):
                 pass
 
             # Using CUSTOM_ACTION_SECRET environment variable
-            @app.on_action(event_type="my_app.process", name="Process", description="Process file")
+            @app.on_action("my_app.process", name="Process", description="Process file")
             async def on_process(event: ActionEvent):
                 pass
             ```
@@ -372,40 +471,46 @@ class App:
 
         return decorator
 
-    @asynccontextmanager
-    async def _lifespan(self, app: Starlette) -> AsyncGenerator[None, None]:
-        """Manages the application's lifespan, including client setup and teardown."""
-        if self._token:
-            _ = self.client  # Initialize the client
+    async def close(self) -> None:
+        """Close underlying HTTP clients and release resources.
 
-        # Store OAuth components in app state for route access
-        if self._oauth_manager and self._oauth_config:
-            app.state.token_manager = self._oauth_manager.token_manager
-            app.state.oauth_config = self._oauth_config
-            app.state.oauth_client = self._oauth_manager.oauth_client
-            app.state.state_serializer = self._oauth_manager.state_serializer
+        Call this when shutting down the application to cleanly close
+        connections. When running standalone with uvicorn this is handled
+        automatically via the ASGI lifespan. When mounting inside another
+        framework (e.g. FastAPI) you should call this from the parent
+        app's lifespan shutdown.
 
-        yield
+        Example:
+            ```python
+            from contextlib import asynccontextmanager
+            from fastapi import FastAPI
 
-        # Cleanup resources with error handling for each
-        cleanup_errors: list[Exception] = []
+            @asynccontextmanager
+            async def lifespan(app):
+                yield
+                await frameio_app.close()
 
+            app = FastAPI(lifespan=lifespan)
+            app.mount("/", frameio_app)
+            ```
+        """
         if self._api_client:
             try:
                 await self._api_client.close()
-            except Exception as e:
+            except Exception:
                 logger.exception("Error closing API client")
-                cleanup_errors.append(e)
 
         if self._oauth_manager:
             try:
                 await self._oauth_manager.close()
-            except Exception as e:
+            except Exception:
                 logger.exception("Error closing OAuth manager")
-                cleanup_errors.append(e)
 
-        if cleanup_errors:
-            logger.warning("Encountered %d error(s) during cleanup", len(cleanup_errors))
+    @asynccontextmanager
+    async def _lifespan(self, app: Starlette):
+        """ASGI lifespan handler for standalone usage."""
+        yield
+        await self.close()
 
     def _create_asgi_app(self) -> Starlette:
         """Builds the Starlette ASGI application with routes and lifecycle hooks."""
@@ -416,11 +521,45 @@ class App:
             auth_routes = create_auth_routes()
             routes.extend(auth_routes)
 
-        return Starlette(
-            debug=True,
+        # Add install routes if configured
+        if self._install_enabled:
+            from ._install_routes import create_install_routes
+
+            install_routes = create_install_routes()
+            routes.extend(install_routes)
+
+        starlette_app = Starlette(
+            debug=False,
             routes=routes,
             lifespan=self._lifespan,
         )
+
+        # Set state eagerly so it's available even when mounted as a
+        # sub-application (where the inner lifespan may not run).
+        starlette_app.state.branding = self._branding
+
+        if self._oauth_manager and self._oauth_config:
+            starlette_app.state.token_manager = self._oauth_manager.token_manager
+            starlette_app.state.oauth_config = self._oauth_config
+            starlette_app.state.oauth_client = self._oauth_manager.oauth_client
+            starlette_app.state.state_serializer = self._oauth_manager.state_serializer
+
+            # Set up auth template renderer for OAuth callback pages
+            from ._auth_templates import AuthTemplateRenderer
+
+            starlette_app.state.auth_renderer = AuthTemplateRenderer(self._branding)
+
+        if self._install_enabled and self._install_manager and self._template_renderer:
+            starlette_app.state.install_manager = self._install_manager
+            starlette_app.state.install_session_ttl = self._install_session_ttl
+            starlette_app.state.base_url = self._base_url
+            starlette_app.state.template_renderer = self._template_renderer
+            # Store references so the manifest can be built lazily (handlers
+            # are registered via decorators after __init__ completes).
+            starlette_app.state._webhook_handlers = self._webhook_handlers
+            starlette_app.state._action_handlers = self._action_handlers
+
+        return starlette_app
 
     def _find_handler(self, event_type: str) -> _HandlerRegistration | None:
         """Finds the registered handler for a given event type."""
@@ -569,7 +708,9 @@ class App:
             handler_with_middleware = self._build_middleware_chain(final_handler)
             response_data = await handler_with_middleware(event)
 
-            if isinstance(response_data, (Message, Form)):
+            # Webhook handlers are fire-and-forget; ignore any return value.
+            is_webhook = event_type in self._webhook_handlers
+            if not is_webhook and isinstance(response_data, (Message, Form)):
                 return JSONResponse(response_data.model_dump(exclude_none=True))
 
             return Response("OK", status_code=200)

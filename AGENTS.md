@@ -21,7 +21,7 @@ Adherence to this stack is mandatory. Do not introduce new tools without a forma
 | **Python Version** | **3.13+** | Utilize modern language features such as the \` |
 | **Dependency Mgmt** | **uv** | Use uv pip compile and uv pip sync for fast, deterministic dependency resolution. All dependencies must be defined in pyproject.toml. Do not use requirements.txt for the library itself. |
 | **Linting & Formatting** | **Ruff** | A single, high-performance tool for both linting and formatting. Configure ruff.toml to enforce strict rules, including isort for import sorting. The code base must be 100% compliant with ruff check and ruff format. |
-| **Type Checking** | **pyrefly** | Configure in pyproject.toml. |
+| **Type Checking** | **basedpyright** | Configure in pyproject.toml under `[tool.basedpyright]`. |
 | **Testing** | **pytest** & **pytest-asyncio** | All tests must be written using pytest. Asynchronous code must be tested using pytest-asyncio. |
 | **HTTP Client** | **httpx** | Use httpx.AsyncClient for all API calls. Leverage its features for connection pooling, timeouts, and handling async requests. For tests, use httpx.MockRouter to mock API responses reliably without actual network calls. |
 | **Data Modeling** | **Pydantic** | All API response models and request bodies **MUST** be defined as Pydantic models. This provides data validation, serialization, and excellent editor support out-of-the-box. |
@@ -101,6 +101,14 @@ The SDK follows a modular architecture with clear separation of concerns:
 | `_client.py` | Frame.io API client |
 | `_context.py` | Request context management |
 | `_auth_routes.py` | OAuth authentication routes |
+| `_auth_templates.py` | Auth callback page templates |
+| `_storage.py` | Storage abstraction (MemoryStorage) |
+| `_storage_dynamodb.py` | DynamoDB storage backend |
+| `_install_models.py` | Installation data models |
+| `_install_manager.py` | Installation lifecycle management |
+| `_install_routes.py` | Install UI route handlers (HTMX) |
+| `_install_templates.py` | Install UI Jinja2 templates |
+| `_install_secret_resolver.py` | Auto-wired secret resolver for installations |
 
 ### Design Principles
 
@@ -212,6 +220,8 @@ FrameioKitError (base)
 ├── SignatureVerificationError
 ├── EventValidationError
 ├── ConfigurationError
+├── InstallationError
+│   └── InstallationNotFoundError
 └── OAuthError
     ├── TokenExchangeError
     └── TokenRefreshError

@@ -15,3 +15,5 @@ tokens/
 
 # Docs
 site/
+
+.claude/

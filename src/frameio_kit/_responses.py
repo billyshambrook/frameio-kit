@@ -16,7 +16,7 @@ class _UIResponse(BaseModel):
 
     Attributes:
         title: The text displayed as the main heading in the UI modal.
-        description: The paragraph of text displayed below the title. Defaults to an empty string.
+        description: The paragraph of text displayed below the title.
     """
 
     title: str
@@ -99,7 +99,7 @@ class TextareaField(_BaseField):
     value: str | None = None
 
 
-class SelectOption(_BaseField):
+class SelectOption(BaseModel):
     """Represents a single choice within a `SelectField`.
 
     Attributes:

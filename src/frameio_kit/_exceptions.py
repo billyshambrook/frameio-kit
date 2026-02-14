@@ -110,3 +110,15 @@ class TokenRefreshError(OAuthError):
     """
 
     pass
+
+
+class InstallationError(FrameioKitError):
+    """Base exception for installation-related errors."""
+
+    pass
+
+
+class InstallationNotFoundError(InstallationError):
+    """No installation found for the given workspace."""
+
+    pass

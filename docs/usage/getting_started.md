@@ -35,6 +35,17 @@ uv add frameio-kit uvicorn
 pip install frameio-kit uvicorn
 ```
 
+### Optional Dependencies
+
+frameio-kit provides optional extras for additional features:
+
+| Extra | Command | Description |
+|-------|---------|-------------|
+| `install` | `pip install frameio-kit[install]` | [Installation system](installation.md) for self-service workspace onboarding |
+| `dynamodb` | `pip install frameio-kit[dynamodb]` | [DynamoDB storage backend](user_auth.md#multi-server-dynamodbstorage) for multi-server deployments |
+
+You can combine extras: `pip install frameio-kit[install,dynamodb]`
+
 ## Step 2: Create Your Application
 
 Create a file named `main.py` with the following code:
@@ -122,10 +133,10 @@ WEBHOOK_SECRET=your-webhook-secret-here
     **For multiple secrets**: Pass each secret explicitly via environment variables:
     ```python
     @app.on_webhook("file.ready", secret=os.environ["FILES_WEBHOOK_SECRET"])
-    @app.on_action("my_app.analyze", "Analyze", "Analyze file", secret=os.environ["ANALYZE_CUSTOM_ACTION_SECRET"])
+    @app.on_action("my_app.analyze", name="Analyze", description="Analyze file", secret=os.environ["ANALYZE_CUSTOM_ACTION_SECRET"])
     ```
 
-    **For dynamic secrets** (e.g., multi-tenant apps, database-backed secrets): See [Dynamic Secret Resolution](app.md#dynamic-secret-resolution) in the App Configuration guide.
+    **For dynamic secrets** (e.g., multi-tenant apps, database-backed secrets): See [Secret Resolution Precedence](app.md#secret-resolution-precedence) in the App Configuration guide, or use the [Installation System](installation.md) for automatic secret management.
 
 ## Step 5: Run Your Application
 

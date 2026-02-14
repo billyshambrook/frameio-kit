@@ -1,5 +1,5 @@
 site_name: frameio-kit
-site_url: "https://billyshambrook.github.io/frameio-kit/"
+site_url: "https://frameio-kit.dev"
 repo_name: billyshambrook/frameio-kit
 repo_url: https://github.com/billyshambrook/frameio-kit
 watch: [mkdocs.yml, docs, src]
@@ -51,6 +51,7 @@ nav:
       - Client API: usage/client_api.md
       - Middleware: usage/middleware.md
       - User Authentication: usage/user_auth.md
+      - Installation System: usage/installation.md
   - API Reference: api_reference.md
 
 plugins:

@@ -1,10 +1,7 @@
 from ._app import (
     ActionHandlerFunc,
-    ActionSecretResolver,
     App,
-    SecretResolver,
     WebhookHandlerFunc,
-    WebhookSecretResolver,
 )
 from ._client import Client
 from ._context import get_user_token
@@ -13,6 +10,8 @@ from ._exceptions import (
     ConfigurationError,
     EventValidationError,
     FrameioKitError,
+    InstallationError,
+    InstallationNotFoundError,
     OAuthError,
     SecretResolutionError,
     SignatureVerificationError,
@@ -21,6 +20,8 @@ from ._exceptions import (
 )
 from ._middleware import Middleware, NextFunc
 from ._oauth import OAuthConfig
+from ._storage import MemoryStorage, Storage
+from ._storage_dynamodb import DynamoDBStorage
 from ._responses import (
     AnyResponse,
     CheckboxField,
@@ -33,16 +34,14 @@ from ._responses import (
     TextareaField,
     TextField,
 )
+from ._install_models import ActionRecord, Installation, WebhookRecord
 from ._security import verify_signature
 
 __all__ = [
     # _app.py
     "ActionHandlerFunc",
-    "ActionSecretResolver",
     "App",
-    "SecretResolver",
     "WebhookHandlerFunc",
-    "WebhookSecretResolver",
     # _client.py
     "Client",
     # _context.py
@@ -60,16 +59,27 @@ __all__ = [
     "ConfigurationError",
     "EventValidationError",
     "FrameioKitError",
+    "InstallationError",
+    "InstallationNotFoundError",
     "OAuthError",
     "SecretResolutionError",
     "SignatureVerificationError",
     "TokenExchangeError",
     "TokenRefreshError",
+    # _install_models.py
+    "ActionRecord",
+    "Installation",
+    "WebhookRecord",
     # _middleware.py
     "Middleware",
     "NextFunc",
     # _oauth.py
     "OAuthConfig",
+    # _storage.py
+    "MemoryStorage",
+    "Storage",
+    # _storage_dynamodb.py
+    "DynamoDBStorage",
     # _responses.py
     "AnyResponse",
     "CheckboxField",

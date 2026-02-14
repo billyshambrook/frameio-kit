@@ -63,18 +63,16 @@ async def process_file(event: ActionEvent):
     token = get_user_token()
 
     # Create client with user's token
-    user_client = Client(token=token)
+    async with Client(token=token) as user_client:
+        # Fetch the authenticated user's profile
+        profile = await user_client.users.show()
 
-    # Fetch the authenticated user's profile
-    profile = await user_client.users.show()
+        # Make API calls as the user
+        file = await user_client.files.show(
+            account_id=event.account_id,
+            file_id=event.resource_id
+        )
 
-    # Make API calls as the user
-    file = await user_client.files.show(
-        account_id=event.account_id,
-        file_id=event.resource_id
-    )
-
-    await user_client.close()
     return Message(
         title="File Processed",
         description=f"Processed {file.data.name} as {profile.data.name}"
@@ -93,17 +91,17 @@ async def process_file(event: ActionEvent):
 
 ## Configuration
 
-### Required Parameters
+### OAuthConfig Parameters
 
-- `client_id` - Adobe IMS client ID
-- `client_secret` - Adobe IMS client secret
-
-### Optional Parameters
-
+- `client_id` - Adobe IMS client ID *(required)*
+- `client_secret` - Adobe IMS client secret *(required)*
 - `redirect_url` - Full OAuth callback URL (default: automatically inferred). Set explicitly for reverse proxy scenarios.
 - `scopes` - OAuth scopes (default: `["additional_info.roles", "offline_access", "profile", "email", "openid"]`)
-- `storage` - Token storage backend (default: `MemoryStore()`)
-- `encryption_key` - Explicit encryption key (default: environment variable or ephemeral)
+
+### App-Level Parameters
+
+- `storage` - Token storage backend (default: `MemoryStorage()`)
+- `encryption_key` - Explicit encryption key (default: `FRAMEIO_AUTH_ENCRYPTION_KEY` env var or ephemeral)
 
 ### Redirect URL Configuration
 
@@ -126,15 +124,15 @@ app = App(
 Make sure to consider [mounting](mounting.md) when setting the `redirect_url`.
 
 !!! warning "Important: Mount Path Consideration"
-    If you mount your app at a subpath (e.g., `/frameio`), your `redirect_url` must include the mount path.  
-    For example, if your app is mounted at `/frameio`, set:  
-    `redirect_url="https://yourapp.com/frameio/auth/callback"`  
-    not  
+    If you mount your app at a subpath (e.g., `/frameio`), your `redirect_url` must include the mount path.
+    For example, if your app is mounted at `/frameio`, set:
+    `redirect_url="https://yourapp.com/frameio/auth/callback"`
+    not
     `redirect_url="https://yourapp.com/auth/callback"`
 ### Complete Example
 
 ```python
-from key_value.aio.stores.redis import RedisStore
+from frameio_kit import App, OAuthConfig, DynamoDBStorage
 
 app = App(
     oauth=OAuthConfig(
@@ -142,9 +140,9 @@ app = App(
         client_secret=os.environ["ADOBE_CLIENT_SECRET"],
         redirect_url="https://yourapp.com/auth/callback",  # Explicit for proxy
         scopes=["openid", "AdobeID", "frameio.api"],
-        storage=RedisStore(url="redis://localhost:6379"),
-        encryption_key=os.environ["FRAMEIO_AUTH_ENCRYPTION_KEY"],
-    )
+    ),
+    storage=DynamoDBStorage(table_name="frameio-app-data"),
+    encryption_key=os.environ["FRAMEIO_AUTH_ENCRYPTION_KEY"],
 )
 ```
 
@@ -152,7 +150,7 @@ app = App(
 
 Tokens are encrypted at rest. Choose a backend based on your deployment:
 
-### Development: MemoryStore
+### Development: MemoryStorage
 
 Tokens stored in memory (lost on restart):
 
@@ -161,63 +159,73 @@ Tokens stored in memory (lost on restart):
 app = App(oauth=OAuthConfig(...))
 ```
 
-### Single Server: DiskStore
+### Multi-Server: DynamoDBStorage
 
-Tokens persist to disk:
+Install the optional dependency:
 
-```python
-from key_value.aio.stores.disk import DiskStore
-
-app = App(
-    oauth=OAuthConfig(
-        ...,
-        storage=DiskStore(directory="./tokens"),
-    )
-)
+```bash
+pip install frameio-kit[dynamodb]
 ```
-
-### Multi-Server: RedisStore
-
-Tokens shared across servers:
-
-```python
-from key_value.aio.stores.redis import RedisStore
-
-app = App(
-    oauth=OAuthConfig(
-        ...,
-        storage=RedisStore(url="redis://localhost:6379"),
-    )
-)
-```
-
-### Multi-Server: DynamoDBStore
 
 Tokens shared via AWS DynamoDB:
 
 ```python
-from key_value.aio.stores.dynamodb import DynamoDBStore
+from frameio_kit import DynamoDBStorage
 
 app = App(
-    oauth=OAuthConfig(
-        ...,
-        storage=DynamoDBStore(
-            table_name="frameio-oauth-tokens",
-            region_name="us-east-1",
-        ),
-    )
+    oauth=OAuthConfig(...),
+    storage=DynamoDBStorage(table_name="frameio-app-data"),
 )
 ```
 
-**Note**: DynamoDB table requires:
-- **Partition key**: `key` (String)
-- **TTL attribute**: `ttl` (Number) - Enable TTL for automatic cleanup
+The DynamoDB table requires a partition key `PK` (String) and TTL enabled on the `ttl` attribute.
+
+```hcl
+resource "aws_dynamodb_table" "frameio_app_data" {
+  name         = "frameio-app-data"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "PK"
+
+  attribute {
+    name = "PK"
+    type = "S"
+  }
+
+  ttl {
+    attribute_name = "ttl"
+    enabled        = true
+  }
+}
+```
+
+### Custom Storage
+
+Implement the `Storage` protocol for any other backend:
+
+```python
+from frameio_kit import Storage
+
+class RedisStorage:
+    async def get(self, key: str) -> dict | None:
+        ...
+
+    async def put(self, key: str, value: dict, *, ttl: int | None = None) -> None:
+        ...
+
+    async def delete(self, key: str) -> None:
+        ...
+
+app = App(
+    oauth=OAuthConfig(...),
+    storage=RedisStorage(),
+)
+```
 
 ## Encryption
 
 Tokens are encrypted using Fernet symmetric encryption. The key is loaded in priority order:
 
-1. Explicit `encryption_key` in OAuthConfig
+1. Explicit `encryption_key` parameter on `App`
 2. Environment variable `FRAMEIO_AUTH_ENCRYPTION_KEY`
 3. Ephemeral key (generated on startup, lost on restart)
 
@@ -276,9 +284,8 @@ async def admin_action(event: ActionEvent):
 # User authentication
 @app.on_action(..., require_user_auth=True)
 async def user_action(event: ActionEvent):
-    user_client = Client(token=get_user_token())
-    await user_client.files.show(...)
-    await user_client.close()
+    async with Client(token=get_user_token()) as user_client:
+        await user_client.files.show(...)
 ```
 
 ## Troubleshooting

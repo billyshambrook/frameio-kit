@@ -41,9 +41,12 @@ async def _login_endpoint(request: Request) -> RedirectResponse | HTMLResponse:
     Returns:
         Redirect to Adobe IMS authorization page.
     """
+    from ._auth_templates import AuthTemplateRenderer
+
     # Get oauth config from app state
     oauth_config: OAuthConfig = request.app.state.oauth_config
     state_serializer: StateSerializer = request.app.state.state_serializer
+    renderer: AuthTemplateRenderer = request.app.state.auth_renderer
 
     # Extract user context from query params
     user_id = request.query_params.get("user_id")
@@ -51,7 +54,7 @@ async def _login_endpoint(request: Request) -> RedirectResponse | HTMLResponse:
 
     if not user_id:
         return HTMLResponse(
-            "<h1>Error</h1><p>Missing user_id parameter</p>",
+            renderer.render_error("Invalid Request", "Missing user_id parameter"),
             status_code=400,
         )
 
@@ -85,9 +88,12 @@ async def _callback_endpoint(request: Request) -> HTMLResponse:
     Returns:
         HTML page with success or error message.
     """
+    from ._auth_templates import AuthTemplateRenderer
+
     # Get components from app state
     token_manager: TokenManager = request.app.state.token_manager
     state_serializer: StateSerializer = request.app.state.state_serializer
+    renderer: AuthTemplateRenderer = request.app.state.auth_renderer
 
     code = request.query_params.get("code")
     state = request.query_params.get("state")
@@ -97,24 +103,14 @@ async def _callback_endpoint(request: Request) -> HTMLResponse:
     if error:
         error_description = request.query_params.get("error_description", "Unknown error")
         return HTMLResponse(
-            f"""
-            <html>
-            <head><title>Authentication Failed</title></head>
-            <body>
-                <h1>Authentication Failed</h1>
-                <p><strong>Error:</strong> {error}</p>
-                <p><strong>Description:</strong> {error_description}</p>
-                <p>Please close this window and try again.</p>
-            </body>
-            </html>
-            """,
+            renderer.render_error("Authentication Failed", error_description),
             status_code=400,
         )
 
     # Validate required parameters
     if not code or not state:
         return HTMLResponse(
-            "<h1>Error</h1><p>Missing code or state parameter</p>",
+            renderer.render_error("Invalid Request", "Missing code or state parameter."),
             status_code=400,
         )
 
@@ -123,30 +119,12 @@ async def _callback_endpoint(request: Request) -> HTMLResponse:
         state_data = state_serializer.loads(state)
     except SignatureExpired:
         return HTMLResponse(
-            """
-            <html>
-            <head><title>Session Expired</title></head>
-            <body>
-                <h1>Session Expired</h1>
-                <p>The authentication session has expired.</p>
-                <p>Please close this window and try again.</p>
-            </body>
-            </html>
-            """,
+            renderer.render_error("Session Expired", "The authentication session has expired."),
             status_code=400,
         )
     except BadSignature:
         return HTMLResponse(
-            """
-            <html>
-            <head><title>Invalid State</title></head>
-            <body>
-                <h1>Invalid State</h1>
-                <p>The authentication state token is invalid.</p>
-                <p>Please close this window and try again.</p>
-            </body>
-            </html>
-            """,
+            renderer.render_error("Invalid State", "The authentication state token is invalid."),
             status_code=400,
         )
 
@@ -155,16 +133,7 @@ async def _callback_endpoint(request: Request) -> HTMLResponse:
 
     if not user_id or not redirect_url:
         return HTMLResponse(
-            """
-            <html>
-            <head><title>Invalid State Data</title></head>
-            <body>
-                <h1>Invalid State Data</h1>
-                <p>The authentication state is incomplete or corrupted.</p>
-                <p>Please close this window and try again.</p>
-            </body>
-            </html>
-            """,
+            renderer.render_error("Invalid State Data", "The authentication state is incomplete."),
             status_code=400,
         )
 
@@ -176,60 +145,11 @@ async def _callback_endpoint(request: Request) -> HTMLResponse:
         token_data = await oauth_client.exchange_code(code, redirect_url)
         await token_manager.store_token(user_id, token_data)
 
-        # Success page
-        return HTMLResponse(
-            """
-            <html>
-            <head>
-                <title>Authentication Successful</title>
-                <style>
-                    body {
-                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                        display: flex;
-                        justify-content: center;
-                        align-items: center;
-                        height: 100vh;
-                        margin: 0;
-                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                    }
-                    .container {
-                        background: white;
-                        padding: 3rem;
-                        border-radius: 1rem;
-                        box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-                        text-align: center;
-                        max-width: 400px;
-                    }
-                    h1 { color: #2d3748; margin: 0 0 1rem; }
-                    p { color: #4a5568; line-height: 1.6; }
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <h1>Authentication Successful!</h1>
-                    <p>You have successfully signed in with Adobe.</p>
-                    <p>You can now close this window and return to Frame.io.</p>
-                    <script>
-                        setTimeout(() => window.close(), 3000);
-                    </script>
-                </div>
-            </body>
-            </html>
-            """
-        )
+        return HTMLResponse(renderer.render_success())
     except Exception:
         logger.exception("OAuth token exchange failed")
         return HTMLResponse(
-            """
-            <html>
-            <head><title>Authentication Failed</title></head>
-            <body>
-                <h1>Authentication Failed</h1>
-                <p>An error occurred during authentication.</p>
-                <p>Please close this window and try again.</p>
-            </body>
-            </html>
-            """,
+            renderer.render_error("Authentication Failed", "An error occurred during authentication."),
             status_code=500,
         )
 

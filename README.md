@@ -14,7 +14,7 @@ async def on_file_ready(event: WebhookEvent):
     print(f"File {event.resource_id} is ready!")
 
 # Single action - uses CUSTOM_ACTION_SECRET env var
-@app.on_action("my_app.analyze", "Analyze File", "Analyze this file")
+@app.on_action("my_app.analyze", name="Analyze File", description="Analyze this file")
 async def analyze_file(event: ActionEvent):
     return Message(title="Analysis Complete", description="File analyzed successfully!")
 
@@ -28,11 +28,11 @@ async def on_comment(event: WebhookEvent):
 
 Ready to build your first Frame.io integration? Check out our comprehensive documentation:
 
-- **[📖 Getting Started Guide](https://billyshambrook.github.io/frameio-kit/usage/getting_started/)** - Get up and running in 5 minutes
-- **[🎣 Webhooks](https://billyshambrook.github.io/frameio-kit/usage/webhooks/)** - React to Frame.io events automatically  
-- **[🎬 Custom Actions](https://billyshambrook.github.io/frameio-kit/usage/custom_actions/)** - Build interactive user experiences
-- **[🌐 Client API](https://billyshambrook.github.io/frameio-kit/usage/client_api/)** - Make calls back to Frame.io's API
-- **[🔄 Middleware](https://billyshambrook.github.io/frameio-kit/usage/middleware/)** - Add cross-cutting concerns to your integration
+- **[📖 Getting Started Guide](https://frameio-kit.dev/usage/getting_started/)** - Get up and running in 5 minutes
+- **[🎣 Webhooks](https://frameio-kit.dev/usage/webhooks/)** - React to Frame.io events automatically  
+- **[🎬 Custom Actions](https://frameio-kit.dev/usage/custom_actions/)** - Build interactive user experiences
+- **[🌐 Client API](https://frameio-kit.dev/usage/client_api/)** - Make calls back to Frame.io's API
+- **[🔄 Middleware](https://frameio-kit.dev/usage/middleware/)** - Add cross-cutting concerns to your integration
 
 ## ✨ Why frameio-kit?
 
@@ -71,7 +71,7 @@ CUSTOM_ACTION_SECRET=your-action-secret-here
 ```python
 # No secret parameter needed
 @app.on_webhook("file.ready")
-@app.on_action("my_app.process", "Process", "Process file")
+@app.on_action("my_app.process", name="Process", description="Process file")
 ```
 
 ### Multiple Actions/Webhooks (Different Secrets)
@@ -90,13 +90,13 @@ import os
 
 @app.on_webhook("file.ready", secret=os.environ["WEBHOOK_FILES"])
 @app.on_webhook("comment.created", secret=os.environ["WEBHOOK_COMMENTS"])
-@app.on_action("my_app.analyze", "Analyze", "Analyze file", secret=os.environ["CUSTOM_ACTION_ANALYZE"])
-@app.on_action("my_app.publish", "Publish", "Publish file", secret=os.environ["CUSTOM_ACTION_PUBLISH"])
+@app.on_action("my_app.analyze", name="Analyze", description="Analyze file", secret=os.environ["CUSTOM_ACTION_ANALYZE"])
+@app.on_action("my_app.publish", name="Publish", description="Publish file", secret=os.environ["CUSTOM_ACTION_PUBLISH"])
 ```
 
 ## 📚 Documentation
 
-Complete documentation is available at [billyshambrook.github.io/frameio-kit](https://billyshambrook.github.io/frameio-kit/), including:
+Complete documentation is available at [frameio-kit.dev](https://frameio-kit.dev), including:
 
 ## 🤝 Contributing
 
@@ -121,9 +121,9 @@ Contributions are the heart of open source! We welcome improvements, bug fixes, 
    source .venv/bin/activate  # or activate via your IDE
    ```
 
-3. **Install pre-commit hooks**:
+3. **Install prek hooks**:
    ```bash
-   uv run pre-commit install
+   uv run prek install
    ```
 
 ### 🧪 Development Workflow
@@ -135,7 +135,7 @@ uv run pytest
 
 **Run code quality checks:**
 ```bash
-uv run pre-commit run --all-files
+uv run prek run --all-files
 ```
 
 **Build documentation:**
@@ -148,7 +148,7 @@ uv run mkdocs serve
 1. **Fork** the repository on GitHub
 2. **Create** a feature branch from `main`
 3. **Make** your changes with tests and documentation
-4. **Ensure** all tests and pre-commit hooks pass
+4. **Ensure** all tests and prek hooks pass
 5. **Commit** your changes with a clear message
 6. **Push** to your fork and open a pull request
 

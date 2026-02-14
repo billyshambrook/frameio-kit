@@ -4,12 +4,25 @@ import pytest
 from starlette.applications import Starlette
 from starlette.testclient import TestClient
 
+from frameio_kit._app import _BrandingConfig
 from frameio_kit._auth_routes import create_auth_routes
+from frameio_kit._auth_templates import AuthTemplateRenderer
 from frameio_kit._encryption import TokenEncryption
 from frameio_kit._oauth import OAuthConfig, StateSerializer, TokenManager
 
 # Test secret key for StateSerializer
 TEST_SECRET_KEY = TokenEncryption.generate_key()
+
+_TEST_BRANDING = _BrandingConfig(
+    name="Test App",
+    description="",
+    logo_url=None,
+    primary_color="#6366f1",
+    accent_color="#8b5cf6",
+    custom_css=None,
+    show_powered_by=True,
+)
+_TEST_AUTH_RENDERER = AuthTemplateRenderer(_TEST_BRANDING)
 
 
 @pytest.fixture
@@ -19,7 +32,6 @@ def oauth_config() -> OAuthConfig:
         client_id="test_client_id",
         client_secret="test_client_secret",
         redirect_url="https://example.com/auth/callback",
-        encryption_key=TEST_SECRET_KEY,
     )
 
 
@@ -30,16 +42,15 @@ def oauth_config_no_redirect() -> OAuthConfig:
         client_id="test_client_id",
         client_secret="test_client_secret",
         redirect_url=None,
-        encryption_key=TEST_SECRET_KEY,
     )
 
 
 @pytest.fixture
 def token_manager() -> TokenManager:
     """Create test token manager."""
-    from key_value.aio.stores.memory import MemoryStore
+    from frameio_kit._storage import MemoryStorage
 
-    storage = MemoryStore()
+    storage = MemoryStorage()
     encryption = TokenEncryption(key=TEST_SECRET_KEY)
     return TokenManager(
         storage=storage,
@@ -77,6 +88,7 @@ def test_app(
     app.state.token_manager = token_manager
     app.state.oauth_client = oauth_client
     app.state.state_serializer = state_serializer
+    app.state.auth_renderer = _TEST_AUTH_RENDERER
 
     # Add auth routes
     auth_routes = create_auth_routes()
@@ -171,6 +183,7 @@ class TestLoginEndpoint:
             client_secret=oauth_config_no_redirect.client_secret,
         )
         app.state.state_serializer = state_serializer
+        app.state.auth_renderer = _TEST_AUTH_RENDERER
         auth_routes = create_auth_routes()
         app.routes.extend(auth_routes)
 
@@ -202,6 +215,7 @@ class TestLoginEndpoint:
             client_secret=oauth_config_no_redirect.client_secret,
         )
         sub_app.state.state_serializer = state_serializer
+        sub_app.state.auth_renderer = _TEST_AUTH_RENDERER
         auth_routes = create_auth_routes()
         sub_app.routes.extend(auth_routes)
 
@@ -252,7 +266,6 @@ class TestCallbackEndpoint:
 
         assert response.status_code == 400
         assert "Authentication Failed" in response.text
-        assert "access_denied" in response.text
         assert "User denied access" in response.text
 
     def test_callback_missing_code(self, client: TestClient):
@@ -314,7 +327,6 @@ class TestCallbackEndpoint:
             client_id="test_client_id",
             client_secret="test_client_secret",
             redirect_url=None,
-            encryption_key=TEST_SECRET_KEY,
         )
 
         app = Starlette()
@@ -325,6 +337,7 @@ class TestCallbackEndpoint:
             client_secret=oauth_config_no_redirect.client_secret,
         )
         app.state.state_serializer = state_serializer
+        app.state.auth_renderer = _TEST_AUTH_RENDERER
         auth_routes = create_auth_routes()
         app.routes.extend(auth_routes)
 

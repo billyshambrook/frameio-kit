@@ -1,11 +1,11 @@
 """Unit tests for OAuth client and token manager."""
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
-from key_value.aio.stores.memory import MemoryStore
+from frameio_kit._storage import MemoryStorage
 
 from frameio_kit._encryption import TokenEncryption
 from frameio_kit._oauth import (
@@ -43,7 +43,7 @@ def oauth_client(oauth_config: OAuthConfig) -> AdobeOAuthClient:
 @pytest.fixture
 async def token_manager() -> TokenManager:
     """Create TokenManager with in-memory storage."""
-    storage = MemoryStore()
+    storage = MemoryStorage()
     encryption = TokenEncryption(key=TokenEncryption.generate_key())
     return TokenManager(
         storage=storage,
@@ -59,7 +59,7 @@ def sample_token_data() -> TokenData:
     return TokenData(
         access_token="sample_access_token",
         refresh_token="sample_refresh_token",
-        expires_at=datetime.now() + timedelta(hours=24),
+        expires_at=datetime.now(tz=timezone.utc) + timedelta(hours=24),
         scopes=["openid", "AdobeID", "frameio.api"],
         user_id="user_123",
     )
@@ -116,7 +116,7 @@ class TestAdobeOAuthClient:
             assert token_data.user_id == ""  # Will be set by TokenManager
 
             # Verify expiration is approximately 24 hours from now
-            time_diff = token_data.expires_at - datetime.now()
+            time_diff = token_data.expires_at - datetime.now(tz=timezone.utc)
             assert 86390 <= time_diff.total_seconds() <= 86410  # Allow 10 second variance
 
             # Verify HTTP call
@@ -255,7 +255,7 @@ class TestTokenManager:
         expired_token = TokenData(
             access_token="expired_access",
             refresh_token="valid_refresh",
-            expires_at=datetime.now() - timedelta(hours=1),  # Expired 1 hour ago
+            expires_at=datetime.now(tz=timezone.utc) - timedelta(hours=1),  # Expired 1 hour ago
             scopes=["openid"],
             user_id=user_id,
         )
@@ -264,7 +264,7 @@ class TestTokenManager:
         new_token = TokenData(
             access_token="refreshed_access",
             refresh_token="new_refresh",
-            expires_at=datetime.now() + timedelta(hours=24),
+            expires_at=datetime.now(tz=timezone.utc) + timedelta(hours=24),
             scopes=["openid"],
             user_id=user_id,
         )
@@ -297,7 +297,7 @@ class TestTokenManager:
         expired_token = TokenData(
             access_token="expired_access",
             refresh_token="revoked_refresh",
-            expires_at=datetime.now() - timedelta(hours=1),
+            expires_at=datetime.now(tz=timezone.utc) - timedelta(hours=1),
             scopes=["openid"],
             user_id=user_id,
         )
@@ -328,7 +328,7 @@ class TestTokenManager:
         near_expiry_token = TokenData(
             access_token="near_expiry_access",
             refresh_token="valid_refresh",
-            expires_at=datetime.now() + timedelta(minutes=2),
+            expires_at=datetime.now(tz=timezone.utc) + timedelta(minutes=2),
             scopes=["openid"],
             user_id=user_id,
         )
@@ -337,7 +337,7 @@ class TestTokenManager:
         new_token = TokenData(
             access_token="refreshed_access",
             refresh_token="new_refresh",
-            expires_at=datetime.now() + timedelta(hours=24),
+            expires_at=datetime.now(tz=timezone.utc) + timedelta(hours=24),
             scopes=["openid"],
             user_id=user_id,
         )
@@ -416,27 +416,6 @@ class TestOAuthConfig:
         )
 
         assert config.scopes == ["openid", "custom_scope"]
-
-    def test_storage_default(self):
-        """Test that storage defaults to None."""
-        config = OAuthConfig(
-            client_id="test_id",
-            client_secret="test_secret",
-            redirect_url="https://example.com/auth/callback",
-        )
-
-        assert config.storage is None
-
-    def test_encryption_key_optional(self):
-        """Test that encryption key is optional."""
-        config = OAuthConfig(
-            client_id="test_id",
-            client_secret="test_secret",
-            redirect_url="https://example.com/auth/callback",
-            encryption_key="test_key_12345",
-        )
-
-        assert config.encryption_key == "test_key_12345"
 
     def test_http_client_optional(self):
         """Test that http_client is optional and defaults to None."""

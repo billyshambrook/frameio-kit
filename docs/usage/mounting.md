@@ -37,11 +37,9 @@ Before mounting, understand what routes your frameio-kit `App` exposes. The path
 Mount your frameio-kit `App` at a specific path prefix to keep routes organized:
 
 ```python
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from frameio_kit import App, WebhookEvent, ActionEvent, Message
-
-# Your existing FastAPI app
-fastapi_app = FastAPI()
 
 # Your frameio-kit app
 frameio_app = App()
@@ -50,9 +48,18 @@ frameio_app = App()
 async def on_file_ready(event: WebhookEvent):
     print(f"File {event.resource_id} is ready!")
 
-@frameio_app.on_action("my_app.process", "Process", "Process this file")
+@frameio_app.on_action("my_app.process", name="Process", description="Process this file")
 async def process_file(event: ActionEvent):
     return Message(title="Processing", description="File is being processed")
+
+# Lifespan to clean up frameio-kit resources on shutdown
+@asynccontextmanager
+async def lifespan(app):
+    yield
+    await frameio_app.close()
+
+# Your existing FastAPI app
+fastapi_app = FastAPI(lifespan=lifespan)
 
 # Mount at /frameio prefix
 fastapi_app.mount("/frameio", frameio_app)
@@ -79,15 +86,22 @@ async def health():
 If you want Frame.io events at the root path, mount at `/`:
 
 ```python
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from frameio_kit import App, WebhookEvent
 
-fastapi_app = FastAPI()
 frameio_app = App()
 
 @frameio_app.on_webhook("file.ready")
 async def on_file_ready(event: WebhookEvent):
     print(f"File {event.resource_id} is ready!")
+
+@asynccontextmanager
+async def lifespan(app):
+    yield
+    await frameio_app.close()
+
+fastapi_app = FastAPI(lifespan=lifespan)
 
 # Define your FastAPI routes BEFORE mounting
 @fastapi_app.get("/health")

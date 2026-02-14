@@ -84,7 +84,6 @@ async def handler(event: ActionEvent):
     print(event.type)           # "my_app.analyze"
     print(event.resource_id)    # "abc123"
     print(event.user.id)        # "user_789"
-    print(event.user.name)      # "John Doe"
     print(event.data)           # None (first call) or dict (form submission)
 ```
 
@@ -145,7 +144,7 @@ app = App()
     description="Send notification about this asset"
 )
 async def notify_team(event: ActionEvent):
-    print(f"Notification sent for {event.resource_id} by {event.user.name}")
+    print(f"Notification sent for {event.resource_id} by {event.user.id}")
 
     # Send actual notification here
     await send_notification(event.resource_id, event.user.id)
@@ -188,7 +187,7 @@ async def publish_asset(event: ActionEvent):
         description="Configure your post:",
         fields=[
             SelectField(label="Platform", name="platform", options=PLATFORMS),
-            TextField(label="Caption", name="caption", placeholder="Enter your caption...")
+            TextField(label="Caption", name="caption", value="Enter your caption...")
         ]
     )
 
@@ -213,7 +212,7 @@ async def analyze_asset(event: ActionEvent):
 ```python
 import os
 import datetime
-from frameio_kit import App, ActionEvent, Message, Form, TextField, TextareaField, CheckboxField, DateField
+from frameio_kit import App, ActionEvent, Message, Form, TextField, TextareaField, CheckboxField
 
 app = App()
 
@@ -242,10 +241,10 @@ async def schedule_review(event: ActionEvent):
         title="Schedule Review",
         description="Set up a review for this asset:",
         fields=[
-            TextField(label="Reviewer Email", name="reviewer", placeholder="reviewer@company.com"),
-            DateField(label="Due Date", name="due_date", value=datetime.date.today().isoformat()),
+            TextField(label="Reviewer Email", name="reviewer", value="reviewer@company.com"),
+            TextField(label="Due Date", name="due_date", value=datetime.date.today().isoformat()),
             CheckboxField(label="Urgent", name="urgent", value=False),
-            TextareaField(label="Notes", name="notes", placeholder="Additional instructions...")
+            TextareaField(label="Notes", name="notes", value="Additional instructions...")
         ]
     )
 ```
@@ -278,37 +277,11 @@ async def process_file(event: ActionEvent):
     return Message(title="Processing", description="File is being processed")
 ```
 
-### App-Level Resolver
-
-For centralized secret management across all actions, use the app-level resolver. See [App Configuration](app.md#dynamic-secret-resolution) for details:
-
-```python
-from frameio_kit import App, SecretResolver, WebhookEvent, ActionEvent
-
-class MySecretResolver:
-    async def get_webhook_secret(self, event: WebhookEvent) -> str:
-        return await db.get_webhook_secret(event.account_id)
-
-    async def get_action_secret(self, event: ActionEvent) -> str:
-        return await db.get_action_secret(event.account_id)
-
-app = App(secret_resolver=MySecretResolver())
-
-# All actions use the app-level resolver by default
-@app.on_action(
-    event_type="my_app.process",
-    name="Process File",
-    description="Process this file"
-)
-async def process_file(event: ActionEvent):
-    return Message(title="Processing", description="File is being processed")
-```
-
 ### Secret Resolution Precedence
 
 1. Explicit string secret (`secret="..."`)
 2. Decorator-level resolver (`secret=my_resolver`)
-3. App-level resolver (`App(secret_resolver=...)`)
+3. Install system resolver (when `install=True`, secrets are auto-managed)
 4. Environment variable (`CUSTOM_ACTION_SECRET`)
 
 ## Setting Up Custom Actions in Frame.io
@@ -343,7 +316,7 @@ Custom Actions use a two-step process when returning forms:
 async def my_action(event: ActionEvent):
     if event.data is None:
         # First call - show the form
-        return Form(title="My Form", fields=[...])
+        return Form(title="My Form", description="Fill out the form.", fields=[...])
     else:
         # Second call - process the form data
         return Message(title="Done", description="Form processed!")
