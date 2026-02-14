@@ -233,6 +233,7 @@ class TestAllowedAccounts:
             name="Test App",
             allowed_accounts=["acc-1", "acc-2"],
         )
+        assert app._install_manager is not None
         assert app._install_manager._allowed_accounts == {"acc-1", "acc-2"}
 
     def test_allowed_accounts_default_none(self, oauth_config):
@@ -241,6 +242,7 @@ class TestAllowedAccounts:
             install=True,
             name="Test App",
         )
+        assert app._install_manager is not None
         assert app._install_manager._allowed_accounts is None
 
 
