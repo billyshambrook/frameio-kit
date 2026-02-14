@@ -68,8 +68,8 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://billyshambrook.github.io/frameio-kit/"
-Documentation = "https://billyshambrook.github.io/frameio-kit/"
+Homepage = "https://frameio-kit.dev"
+Documentation = "https://frameio-kit.dev"
 Changelog = "https://github.com/billyshambrook/frameio-kit/releases"
 Repository = "https://github.com/billyshambrook/frameio-kit"
 Issues = "https://github.com/billyshambrook/frameio-kit/issues"
