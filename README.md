@@ -28,11 +28,11 @@ async def on_comment(event: WebhookEvent):
 
 Ready to build your first Frame.io integration? Check out our comprehensive documentation:
 
-- **[📖 Getting Started Guide](https://billyshambrook.github.io/frameio-kit/usage/getting_started/)** - Get up and running in 5 minutes
-- **[🎣 Webhooks](https://billyshambrook.github.io/frameio-kit/usage/webhooks/)** - React to Frame.io events automatically  
-- **[🎬 Custom Actions](https://billyshambrook.github.io/frameio-kit/usage/custom_actions/)** - Build interactive user experiences
-- **[🌐 Client API](https://billyshambrook.github.io/frameio-kit/usage/client_api/)** - Make calls back to Frame.io's API
-- **[🔄 Middleware](https://billyshambrook.github.io/frameio-kit/usage/middleware/)** - Add cross-cutting concerns to your integration
+- **[📖 Getting Started Guide](https://frameio-kit.dev/usage/getting_started/)** - Get up and running in 5 minutes
+- **[🎣 Webhooks](https://frameio-kit.dev/usage/webhooks/)** - React to Frame.io events automatically  
+- **[🎬 Custom Actions](https://frameio-kit.dev/usage/custom_actions/)** - Build interactive user experiences
+- **[🌐 Client API](https://frameio-kit.dev/usage/client_api/)** - Make calls back to Frame.io's API
+- **[🔄 Middleware](https://frameio-kit.dev/usage/middleware/)** - Add cross-cutting concerns to your integration
 
 ## ✨ Why frameio-kit?
 
@@ -96,7 +96,7 @@ import os
 
 ## 📚 Documentation
 
-Complete documentation is available at [billyshambrook.github.io/frameio-kit](https://billyshambrook.github.io/frameio-kit/), including:
+Complete documentation is available at [frameio-kit.dev](https://frameio-kit.dev), including:
 
 ## 🤝 Contributing
 
