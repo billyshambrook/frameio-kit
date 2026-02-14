@@ -25,18 +25,17 @@ pip install frameio-kit[install]
 
 ```python
 import os
-from frameio_kit import App, OAuthConfig, InstallConfig
+from frameio_kit import App, OAuthConfig
 
 app = App(
     oauth=OAuthConfig(
         client_id=os.environ["ADOBE_CLIENT_ID"],
         client_secret=os.environ["ADOBE_CLIENT_SECRET"],
     ),
-    install=InstallConfig(
-        app_name="Transcription Bot",
-        app_description="Automatically transcribes videos uploaded to Frame.io.",
-        primary_color="#6366f1",
-    ),
+    install=True,
+    name="Transcription Bot",
+    description="Automatically transcribes videos uploaded to Frame.io.",
+    primary_color="#6366f1",
 )
 
 # Handlers are auto-discovered — no secret parameter needed
@@ -53,7 +52,7 @@ That's it. Run with `uvicorn` and visit `/install` — the branded installation 
 
 !!! note "No Secret Parameter Needed"
 
-    When `install` is configured, signing secrets are automatically resolved from installation records. You don't need to pass `secret` to `@app.on_webhook` or `@app.on_action`.
+    When `install=True`, signing secrets are automatically resolved from installation records. You don't need to pass `secret` to `@app.on_webhook` or `@app.on_action`.
 
 !!! warning "Storage"
 
@@ -114,17 +113,20 @@ When you change handlers in code (add/remove webhooks or actions, rename an acti
 
 ## Configuration Reference
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `app_name` | `str` | *required* | Display name in install UI |
-| `app_description` | `str` | `""` | Description shown on landing page |
+These parameters are passed directly to `App(...)`:
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `install` | `bool` | `False` | Enable the self-service install page |
+| `name` | `str \| None` | `None` | Display name in install UI and auth pages |
+| `description` | `str` | `""` | Description shown on landing page |
 | `logo_url` | `str \| None` | `None` | Partner logo URL |
 | `primary_color` | `str` | `"#6366f1"` | Branding primary color (hex) |
 | `accent_color` | `str` | `"#8b5cf6"` | Branding accent color (hex) |
 | `custom_css` | `str \| None` | `None` | Raw CSS injected into templates |
 | `show_powered_by` | `bool` | `True` | Show "Powered by frameio-kit" footer |
 | `base_url` | `str \| None` | `None` | Public URL override (else inferred from request) |
-| `session_ttl` | `int` | `1800` | Install session TTL in seconds (30 min) |
+| `install_session_ttl` | `int` | `1800` | Install session TTL in seconds (30 min) |
 
 ## Branding
 
@@ -133,15 +135,14 @@ Customize the installation pages with your brand identity:
 ```python
 app = App(
     oauth=OAuthConfig(...),
-    install=InstallConfig(
-        app_name="My Video Tool",
-        app_description="AI-powered video analysis for your team.",
-        logo_url="https://myapp.com/logo.png",
-        primary_color="#1a73e8",
-        accent_color="#34a853",
-        custom_css=".fk-header { font-family: 'Inter', sans-serif; }",
-        show_powered_by=False,
-    ),
+    install=True,
+    name="My Video Tool",
+    description="AI-powered video analysis for your team.",
+    logo_url="https://myapp.com/logo.png",
+    primary_color="#1a73e8",
+    accent_color="#34a853",
+    custom_css=".fk-header { font-family: 'Inter', sans-serif; }",
+    show_powered_by=False,
 )
 ```
 
@@ -157,7 +158,8 @@ Installation data uses the same `Storage` backend as OAuth token management. Rec
 # Default — no storage parameter needed
 app = App(
     oauth=OAuthConfig(...),
-    install=InstallConfig(app_name="My App"),
+    install=True,
+    name="My App",
 )
 ```
 
@@ -175,8 +177,10 @@ from frameio_kit import DynamoDBStorage
 storage = DynamoDBStorage(table_name="frameio-app-data")
 
 app = App(
-    oauth=OAuthConfig(..., storage=storage),
-    install=InstallConfig(app_name="My App"),
+    oauth=OAuthConfig(...),
+    storage=storage,
+    install=True,
+    name="My App",
 )
 ```
 
@@ -193,27 +197,6 @@ The installation system mounts these routes:
 | `GET` | `/install/status` | HTMX: installation status for selected workspace |
 | `POST` | `/install/execute` | HTMX: perform install or update |
 | `POST` | `/install/uninstall` | HTMX: perform uninstall |
-
-## Advanced: Custom Secret Resolver with Installation
-
-If you provide your own `secret_resolver` alongside `install`, it takes precedence:
-
-```python
-class MyResolver:
-    async def get_webhook_secret(self, event):
-        return await my_cache.get_webhook_secret(event)
-
-    async def get_action_secret(self, event):
-        return await my_cache.get_action_secret(event)
-
-app = App(
-    oauth=OAuthConfig(...),
-    install=InstallConfig(app_name="My App"),
-    secret_resolver=MyResolver(),  # Takes precedence
-)
-```
-
-The installation system still manages webhooks and custom actions via the API, but your resolver controls secret resolution at request time.
 
 ## Security
 

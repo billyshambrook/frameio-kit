@@ -13,7 +13,6 @@ from datetime import datetime, timezone
 
 from ._client import Client
 from ._encryption import TokenEncryption
-from ._install_config import InstallConfig
 from ._install_models import (
     ActionManifestEntry,
     ActionRecord,
@@ -61,19 +60,18 @@ class InstallationManager:
     Attributes:
         storage: Storage backend for installation records.
         encryption: Encryption for signing secrets at rest.
-        install_config: Installation UI configuration.
     """
 
     def __init__(
         self,
         storage: Storage,
         encryption: TokenEncryption,
-        install_config: InstallConfig,
+        app_name: str,
         base_url: str | None = None,
     ) -> None:
         self.storage = storage
         self.encryption = encryption
-        self.install_config = install_config
+        self._app_name = app_name
         self._base_url = base_url
 
     def build_manifest(
@@ -171,7 +169,7 @@ class InstallationManager:
                     account_id,
                     workspace_id,
                     data=WebhookCreateParamsData(
-                        name=f"{self.install_config.app_name} Webhook",
+                        name=f"{self._app_name} Webhook",
                         url=base_url,
                         events=manifest.webhook_events,
                     ),
@@ -278,7 +276,7 @@ class InstallationManager:
                     account_id,
                     workspace_id,
                     data=WebhookCreateParamsData(
-                        name=f"{self.install_config.app_name} Webhook",
+                        name=f"{self._app_name} Webhook",
                         url=base_url,
                         events=sorted(manifest_events),
                     ),

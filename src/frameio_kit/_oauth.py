@@ -13,11 +13,11 @@ from typing import Any, Optional
 
 import httpx
 from itsdangerous import URLSafeTimedSerializer
-from ._storage import Storage
 from pydantic import BaseModel, Field, field_validator
 
 from ._encryption import TokenEncryption
 from ._exceptions import TokenExchangeError, TokenRefreshError
+from ._storage import Storage
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +67,9 @@ class OAuthConfig(BaseModel):
     """OAuth configuration for Adobe IMS authentication.
 
     This configuration is provided at the application level to enable user
-    authentication via Adobe Login OAuth 2.0 flow.
+    authentication via Adobe Login OAuth 2.0 flow. Contains only OAuth-specific
+    credentials and settings. Storage and encryption are configured at the
+    ``App`` level.
 
     Attributes:
         client_id: Adobe IMS application client ID from Adobe Developer Console.
@@ -77,10 +79,6 @@ class OAuthConfig(BaseModel):
             Set this explicitly when behind a reverse proxy or when the public URL
             differs from what the application sees. Must be registered in Adobe Console.
         scopes: List of OAuth scopes to request. Defaults to Frame.io API access.
-        storage: Storage backend instance for persisting encrypted tokens. If None,
-            defaults to MemoryStorage (in-memory, lost on restart).
-        encryption_key: Optional encryption key. If None, uses environment variable
-            or generates ephemeral key.
         token_refresh_buffer_seconds: Number of seconds before token expiration to
             trigger automatic refresh. Defaults to 300 seconds (5 minutes). This
             prevents token expiration during ongoing API calls.
@@ -91,31 +89,12 @@ class OAuthConfig(BaseModel):
     Example:
         ```python
         from frameio_kit import App, OAuthConfig
-        import httpx
-
-        # Basic configuration (in-memory storage)
-        app = App(
-            oauth=OAuthConfig(
-                client_id=os.getenv("ADOBE_CLIENT_ID"),
-                client_secret=os.getenv("ADOBE_CLIENT_SECRET"),
-            )
-        )
-
-        # Full configuration
-        from frameio_kit import DynamoDBStorage
 
         app = App(
             oauth=OAuthConfig(
                 client_id=os.getenv("ADOBE_CLIENT_ID"),
                 client_secret=os.getenv("ADOBE_CLIENT_SECRET"),
-                redirect_url="https://myapp.com/auth/callback",
-                storage=DynamoDBStorage(
-                    table_name="oauth-tokens",
-                    region_name="us-east-1",
-                ),
-                token_refresh_buffer_seconds=600,  # Refresh 10 minutes early
-                http_client=httpx.AsyncClient(timeout=60.0),
-            )
+            ),
         )
         ```
     """
@@ -129,8 +108,6 @@ class OAuthConfig(BaseModel):
         default_factory=lambda: ["additional_info.roles", "offline_access", "profile", "email", "openid"]
     )
     ims_url: str = "https://ims-na1.adobelogin.com"
-    storage: Optional[Storage] = None
-    encryption_key: Optional[str] = None
     token_refresh_buffer_seconds: int = 300  # 5 minutes default
     http_client: Optional[httpx.AsyncClient] = None
 

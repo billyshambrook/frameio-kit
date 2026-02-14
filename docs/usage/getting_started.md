@@ -136,7 +136,7 @@ WEBHOOK_SECRET=your-webhook-secret-here
     @app.on_action("my_app.analyze", name="Analyze", description="Analyze file", secret=os.environ["ANALYZE_CUSTOM_ACTION_SECRET"])
     ```
 
-    **For dynamic secrets** (e.g., multi-tenant apps, database-backed secrets): See [Dynamic Secret Resolution](app.md#dynamic-secret-resolution) in the App Configuration guide.
+    **For dynamic secrets** (e.g., multi-tenant apps, database-backed secrets): See [Secret Resolution Precedence](app.md#secret-resolution-precedence) in the App Configuration guide, or use the [Installation System](installation.md) for automatic secret management.
 
 ## Step 5: Run Your Application
 

@@ -417,27 +417,6 @@ class TestOAuthConfig:
 
         assert config.scopes == ["openid", "custom_scope"]
 
-    def test_storage_default(self):
-        """Test that storage defaults to None."""
-        config = OAuthConfig(
-            client_id="test_id",
-            client_secret="test_secret",
-            redirect_url="https://example.com/auth/callback",
-        )
-
-        assert config.storage is None
-
-    def test_encryption_key_optional(self):
-        """Test that encryption key is optional."""
-        config = OAuthConfig(
-            client_id="test_id",
-            client_secret="test_secret",
-            redirect_url="https://example.com/auth/callback",
-            encryption_key="test_key_12345",
-        )
-
-        assert config.encryption_key == "test_key_12345"
-
     def test_http_client_optional(self):
         """Test that http_client is optional and defaults to None."""
         config = OAuthConfig(

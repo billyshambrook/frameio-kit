@@ -11,7 +11,7 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ._install_config import InstallConfig
+    from ._app import _BrandingConfig
     from ._install_models import HandlerManifest, Installation, InstallationDiff
 
 logger = logging.getLogger(__name__)
@@ -22,7 +22,7 @@ _BASE_TEMPLATE = """\
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ config.app_name }} — Install</title>
+    <title>{{ config.name }} — Install</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
     <style>
@@ -96,9 +96,9 @@ _BASE_TEMPLATE = """\
                 <div class="flex items-center justify-between">
                     <div class="flex items-center gap-3">
                         {% if config.logo_url %}
-                        <img src="{{ config.logo_url }}" alt="{{ config.app_name }} logo" class="h-10 w-10 rounded-lg object-contain">
+                        <img src="{{ config.logo_url }}" alt="{{ config.name }} logo" class="h-10 w-10 rounded-lg object-contain">
                         {% endif %}
-                        <h1 class="text-xl font-bold">{{ config.app_name }}</h1>
+                        <h1 class="text-xl font-bold">{{ config.name }}</h1>
                     </div>
                     {% if authenticated %}
                     <form method="post" action="/install/logout">
@@ -106,8 +106,8 @@ _BASE_TEMPLATE = """\
                     </form>
                     {% endif %}
                 </div>
-                {% if config.app_description %}
-                <p class="mt-2 text-sm" style="color: var(--fk-text-muted);">{{ config.app_description }}</p>
+                {% if config.description %}
+                <p class="mt-2 text-sm" style="color: var(--fk-text-muted);">{{ config.description }}</p>
                 {% endif %}
             </header>
 
@@ -395,7 +395,7 @@ class TemplateRenderer:
     configured with ``autoescape=True`` for XSS protection.
     """
 
-    def __init__(self, install_config: InstallConfig) -> None:
+    def __init__(self, branding: _BrandingConfig) -> None:
         try:
             import jinja2
         except ImportError:
@@ -403,7 +403,7 @@ class TemplateRenderer:
                 "Jinja2 is required for the installation system. Install it with: pip install frameio-kit[install]"
             )
 
-        self._config = install_config
+        self._config = branding
         self._env = jinja2.Environment(autoescape=True)
 
     def render_page(

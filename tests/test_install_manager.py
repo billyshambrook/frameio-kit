@@ -7,7 +7,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from frameio_kit._encryption import TokenEncryption
-from frameio_kit._install_config import InstallConfig
 from frameio_kit._install_manager import InstallationManager, validate_uuid
 from frameio_kit._install_models import (
     ActionManifestEntry,
@@ -32,16 +31,11 @@ def encryption():
 
 
 @pytest.fixture
-def install_config():
-    return InstallConfig(app_name="Test App", app_description="A test app")
-
-
-@pytest.fixture
-def manager(storage, encryption, install_config):
+def manager(storage, encryption):
     return InstallationManager(
         storage=storage,
         encryption=encryption,
-        install_config=install_config,
+        app_name="Test App",
     )
 
 

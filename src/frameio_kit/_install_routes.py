@@ -6,7 +6,7 @@ workspace selection, and install/update/uninstall operations via HTMX.
 
 import logging
 import secrets
-from typing import Any, TypedDict
+from typing import TypedDict
 
 from itsdangerous import BadSignature, SignatureExpired
 from starlette.requests import Request
@@ -32,10 +32,9 @@ async def _get_session(request: Request) -> InstallSession | None:
     Returns None if the session is missing, invalid, or expired.
     """
     from ._encryption import TokenEncryption
-    from ._install_config import InstallConfig
     from ._oauth import StateSerializer
 
-    config: InstallConfig = request.app.state.install_config
+    session_ttl: int = request.app.state.install_session_ttl
     state_serializer: StateSerializer = request.app.state.state_serializer
     manager: InstallationManager = request.app.state.install_manager
     encryption: TokenEncryption = manager.encryption
@@ -46,7 +45,7 @@ async def _get_session(request: Request) -> InstallSession | None:
 
     # Verify the signed cookie
     try:
-        cookie_data = state_serializer.loads(session_cookie, max_age=config.session_ttl)
+        cookie_data = state_serializer.loads(session_cookie, max_age=session_ttl)
     except (SignatureExpired, BadSignature):
         return None
 
@@ -89,10 +88,11 @@ def _get_manifest(request: Request) -> HandlerManifest:
     return state.handler_manifest
 
 
-def _infer_base_url(request: Request, config: Any) -> str:
+def _infer_base_url(request: Request) -> str:
     """Infer the public base URL for webhook/action callbacks."""
-    if config.base_url:
-        return config.base_url.rstrip("/")
+    explicit_base_url: str | None = request.app.state.base_url
+    if explicit_base_url:
+        return explicit_base_url.rstrip("/")
 
     from ._oauth import infer_install_url
 
@@ -171,10 +171,9 @@ async def _install_callback(request: Request) -> Response:
     """GET /install/callback — Handle OAuth callback, create session."""
     import base64
 
-    from ._install_config import InstallConfig
     from ._oauth import AdobeOAuthClient, StateSerializer
 
-    config: InstallConfig = request.app.state.install_config
+    session_ttl: int = request.app.state.install_session_ttl
     oauth_client: AdobeOAuthClient = request.app.state.oauth_client
     state_serializer: StateSerializer = request.app.state.state_serializer
     manager: InstallationManager = request.app.state.install_manager
@@ -233,7 +232,7 @@ async def _install_callback(request: Request) -> Response:
     await manager.storage.put(
         f"install_session:{session_key}",
         session_record,
-        ttl=config.session_ttl,
+        ttl=session_ttl,
     )
 
     # Create signed cookie with session key
@@ -247,7 +246,7 @@ async def _install_callback(request: Request) -> Response:
         secure=request.url.scheme == "https",
         samesite="lax",
         path="/install",
-        max_age=config.session_ttl,
+        max_age=session_ttl,
     )
     return response
 
@@ -333,10 +332,8 @@ async def _install_status(request: Request) -> Response:
 
 async def _install_execute(request: Request) -> Response:
     """POST /install/execute — HTMX: perform install or update."""
-    from ._install_config import InstallConfig
     from ._install_templates import TemplateRenderer
 
-    config: InstallConfig = request.app.state.install_config
     renderer: TemplateRenderer = request.app.state.template_renderer
     manager: InstallationManager = request.app.state.install_manager
     manifest: HandlerManifest = _get_manifest(request)
@@ -360,7 +357,7 @@ async def _install_execute(request: Request) -> Response:
         )
         return HTMLResponse(html, status_code=400)
 
-    base_url = _infer_base_url(request, config)
+    base_url = _infer_base_url(request)
 
     try:
         # Check for existing installation (idempotency)
@@ -489,14 +486,13 @@ async def _install_logout(request: Request) -> Response:
     # Delete session from storage if it exists
     session_cookie = request.cookies.get("install_session")
     if session_cookie:
-        from ._install_config import InstallConfig
         from ._oauth import StateSerializer
 
-        config: InstallConfig = request.app.state.install_config
+        session_ttl: int = request.app.state.install_session_ttl
         state_serializer: StateSerializer = request.app.state.state_serializer
 
         try:
-            cookie_data = state_serializer.loads(session_cookie, max_age=config.session_ttl)
+            cookie_data = state_serializer.loads(session_cookie, max_age=session_ttl)
             session_key = cookie_data.get("session_key")
             if session_key:
                 await manager.storage.delete(f"install_session:{session_key}")

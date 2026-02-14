@@ -91,17 +91,17 @@ async def process_file(event: ActionEvent):
 
 ## Configuration
 
-### Required Parameters
+### OAuthConfig Parameters
 
-- `client_id` - Adobe IMS client ID
-- `client_secret` - Adobe IMS client secret
-
-### Optional Parameters
-
+- `client_id` - Adobe IMS client ID *(required)*
+- `client_secret` - Adobe IMS client secret *(required)*
 - `redirect_url` - Full OAuth callback URL (default: automatically inferred). Set explicitly for reverse proxy scenarios.
 - `scopes` - OAuth scopes (default: `["additional_info.roles", "offline_access", "profile", "email", "openid"]`)
+
+### App-Level Parameters
+
 - `storage` - Token storage backend (default: `MemoryStorage()`)
-- `encryption_key` - Explicit encryption key (default: environment variable or ephemeral)
+- `encryption_key` - Explicit encryption key (default: `FRAMEIO_AUTH_ENCRYPTION_KEY` env var or ephemeral)
 
 ### Redirect URL Configuration
 
@@ -132,7 +132,7 @@ Make sure to consider [mounting](mounting.md) when setting the `redirect_url`.
 ### Complete Example
 
 ```python
-from frameio_kit import DynamoDBStorage
+from frameio_kit import App, OAuthConfig, DynamoDBStorage
 
 app = App(
     oauth=OAuthConfig(
@@ -140,9 +140,9 @@ app = App(
         client_secret=os.environ["ADOBE_CLIENT_SECRET"],
         redirect_url="https://yourapp.com/auth/callback",  # Explicit for proxy
         scopes=["openid", "AdobeID", "frameio.api"],
-        storage=DynamoDBStorage(table_name="frameio-app-data"),
-        encryption_key=os.environ["FRAMEIO_AUTH_ENCRYPTION_KEY"],
-    )
+    ),
+    storage=DynamoDBStorage(table_name="frameio-app-data"),
+    encryption_key=os.environ["FRAMEIO_AUTH_ENCRYPTION_KEY"],
 )
 ```
 
@@ -173,10 +173,8 @@ Tokens shared via AWS DynamoDB:
 from frameio_kit import DynamoDBStorage
 
 app = App(
-    oauth=OAuthConfig(
-        ...,
-        storage=DynamoDBStorage(table_name="frameio-app-data"),
-    )
+    oauth=OAuthConfig(...),
+    storage=DynamoDBStorage(table_name="frameio-app-data"),
 )
 ```
 
@@ -218,10 +216,8 @@ class RedisStorage:
         ...
 
 app = App(
-    oauth=OAuthConfig(
-        ...,
-        storage=RedisStorage(),
-    )
+    oauth=OAuthConfig(...),
+    storage=RedisStorage(),
 )
 ```
 
@@ -229,7 +225,7 @@ app = App(
 
 Tokens are encrypted using Fernet symmetric encryption. The key is loaded in priority order:
 
-1. Explicit `encryption_key` in OAuthConfig
+1. Explicit `encryption_key` parameter on `App`
 2. Environment variable `FRAMEIO_AUTH_ENCRYPTION_KEY`
 3. Ephemeral key (generated on startup, lost on restart)
 

@@ -3,21 +3,8 @@
 import pytest
 from starlette.testclient import TestClient
 
-from frameio_kit._encryption import TokenEncryption
-from frameio_kit._install_config import InstallConfig
 from frameio_kit._oauth import OAuthConfig
 from frameio_kit import App
-
-TEST_KEY = TokenEncryption.generate_key()
-
-
-@pytest.fixture
-def install_config():
-    return InstallConfig(
-        app_name="Test App",
-        app_description="A test integration",
-        primary_color="#6366f1",
-    )
 
 
 @pytest.fixture
@@ -26,15 +13,17 @@ def oauth_config():
         client_id="test_client_id",
         client_secret="test_client_secret",
         redirect_url="https://example.com/auth/callback",
-        encryption_key=TEST_KEY,
     )
 
 
 @pytest.fixture
-def app_with_handlers(oauth_config, install_config):
+def app_with_handlers(oauth_config):
     app = App(
         oauth=oauth_config,
-        install=install_config,
+        install=True,
+        name="Test App",
+        description="A test integration",
+        primary_color="#6366f1",
     )
 
     @app.on_webhook("file.ready")
@@ -49,8 +38,13 @@ def app_with_handlers(oauth_config, install_config):
 
 
 @pytest.fixture
-def app_no_handlers(oauth_config, install_config):
-    return App(oauth=oauth_config, install=install_config)
+def app_no_handlers(oauth_config):
+    return App(
+        oauth=oauth_config,
+        install=True,
+        name="Test App",
+        description="A test integration",
+    )
 
 
 @pytest.fixture
@@ -196,28 +190,15 @@ class TestInstallUninstall:
 class TestAppInstallConfiguration:
     def test_install_requires_oauth(self):
         with pytest.raises(Exception, match="OAuth"):
-            App(install=InstallConfig(app_name="Test"))
+            App(install=True)
 
-    def test_install_auto_wires_secret_resolver(self, oauth_config, install_config):
-        app = App(oauth=oauth_config, install=install_config)
+    def test_install_auto_wires_secret_resolver(self, oauth_config):
+        app = App(oauth=oauth_config, install=True, name="Test App")
         assert app._secret_resolver is not None
         assert app._install_secret_resolver is not None
 
-    def test_install_preserves_explicit_resolver(self, oauth_config, install_config):
-        class CustomResolver:
-            async def get_webhook_secret(self, event):
-                return "custom"
-
-            async def get_action_secret(self, event):
-                return "custom"
-
-        custom = CustomResolver()
-        app = App(oauth=oauth_config, install=install_config, secret_resolver=custom)
-        assert app._secret_resolver is custom
-        assert app._install_secret_resolver is None
-
-    def test_install_routes_mounted(self, oauth_config, install_config):
-        app = App(oauth=oauth_config, install=install_config)
+    def test_install_routes_mounted(self, oauth_config):
+        app = App(oauth=oauth_config, install=True, name="Test App")
         routes = app._asgi_app.routes
         route_paths = [getattr(r, "path", None) for r in routes]
         assert "/install" in route_paths
@@ -228,9 +209,9 @@ class TestAppInstallConfiguration:
         assert "/install/execute" in route_paths
         assert "/install/uninstall" in route_paths
 
-    def test_handlers_registered_without_secret_when_install_configured(self, oauth_config, install_config):
+    def test_handlers_registered_without_secret_when_install_configured(self, oauth_config):
         """Handlers should not raise ValueError when install system provides secret resolver."""
-        app = App(oauth=oauth_config, install=install_config)
+        app = App(oauth=oauth_config, install=True, name="Test App")
 
         @app.on_webhook("file.ready")
         async def on_file_ready(event):

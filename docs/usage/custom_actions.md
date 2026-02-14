@@ -277,37 +277,11 @@ async def process_file(event: ActionEvent):
     return Message(title="Processing", description="File is being processed")
 ```
 
-### App-Level Resolver
-
-For centralized secret management across all actions, use the app-level resolver. See [App Configuration](app.md#dynamic-secret-resolution) for details:
-
-```python
-from frameio_kit import App, SecretResolver, WebhookEvent, ActionEvent
-
-class MySecretResolver:
-    async def get_webhook_secret(self, event: WebhookEvent) -> str:
-        return await db.get_webhook_secret(event.account_id)
-
-    async def get_action_secret(self, event: ActionEvent) -> str:
-        return await db.get_action_secret(event.account_id)
-
-app = App(secret_resolver=MySecretResolver())
-
-# All actions use the app-level resolver by default
-@app.on_action(
-    event_type="my_app.process",
-    name="Process File",
-    description="Process this file"
-)
-async def process_file(event: ActionEvent):
-    return Message(title="Processing", description="File is being processed")
-```
-
 ### Secret Resolution Precedence
 
 1. Explicit string secret (`secret="..."`)
 2. Decorator-level resolver (`secret=my_resolver`)
-3. App-level resolver (`App(secret_resolver=...)`)
+3. Install system resolver (when `install=True`, secrets are auto-managed)
 4. Environment variable (`CUSTOM_ACTION_SECRET`)
 
 ## Setting Up Custom Actions in Frame.io

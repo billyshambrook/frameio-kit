@@ -7,7 +7,6 @@ import pytest
 from frameio_kit._encryption import TokenEncryption
 from frameio_kit._events import Account, ActionEvent, Project, Resource, User, WebhookEvent, Workspace
 from frameio_kit._exceptions import InstallationNotFoundError
-from frameio_kit._install_config import InstallConfig
 from frameio_kit._install_manager import InstallationManager
 from frameio_kit._install_models import ActionRecord, Installation, WebhookRecord
 from frameio_kit._install_secret_resolver import InstallationSecretResolver
@@ -24,8 +23,7 @@ def storage():
 @pytest.fixture
 def manager(storage):
     encryption = TokenEncryption(key=TEST_KEY)
-    config = InstallConfig(app_name="Test")
-    return InstallationManager(storage=storage, encryption=encryption, install_config=config)
+    return InstallationManager(storage=storage, encryption=encryption, app_name="Test")
 
 
 @pytest.fixture
