@@ -101,6 +101,14 @@ The SDK follows a modular architecture with clear separation of concerns:
 | `_client.py` | Frame.io API client |
 | `_context.py` | Request context management |
 | `_auth_routes.py` | OAuth authentication routes |
+| `_auth_templates.py` | Auth callback page templates |
+| `_storage.py` | Storage abstraction (MemoryStorage) |
+| `_storage_dynamodb.py` | DynamoDB storage backend |
+| `_install_models.py` | Installation data models |
+| `_install_manager.py` | Installation lifecycle management |
+| `_install_routes.py` | Install UI route handlers (HTMX) |
+| `_install_templates.py` | Install UI Jinja2 templates |
+| `_install_secret_resolver.py` | Auto-wired secret resolver for installations |
 
 ### Design Principles
 
@@ -212,6 +220,8 @@ FrameioKitError (base)
 ├── SignatureVerificationError
 ├── EventValidationError
 ├── ConfigurationError
+├── InstallationError
+│   └── InstallationNotFoundError
 └── OAuthError
     ├── TokenExchangeError
     └── TokenRefreshError
