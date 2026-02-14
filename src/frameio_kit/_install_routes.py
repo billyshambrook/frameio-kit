@@ -13,8 +13,11 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse, Response
 from starlette.routing import Route
 
+import httpx
+
 from ._install_manager import InstallationManager, validate_uuid
 from ._install_models import HandlerManifest
+from ._oauth import _extract_mount_prefix
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +75,16 @@ async def _get_session(request: Request) -> InstallSession | None:
     )
 
 
+def _install_path(request: Request) -> str:
+    """Get the mount-prefix-aware install base path (e.g., "/myapp/install")."""
+    return f"{_extract_mount_prefix(request)}/install"
+
+
+def _is_secure(request: Request) -> bool:
+    """Check if the request is over HTTPS, including behind reverse proxies."""
+    return request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
+
+
 def _is_htmx(request: Request) -> bool:
     """Check if the request is an HTMX partial request."""
     return request.headers.get("HX-Request") == "true"
@@ -124,9 +137,11 @@ async def _install_page(request: Request) -> Response:
 
     session = await _get_session(request)
 
+    install_base = _install_path(request)
+
     if session is None:
         # Unauthenticated landing page
-        html = renderer.render_page(authenticated=False, manifest=manifest)
+        html = renderer.render_page(authenticated=False, manifest=manifest, install_path=install_base)
         return HTMLResponse(html)
 
     # Authenticated — load accounts
@@ -146,20 +161,19 @@ async def _install_page(request: Request) -> Response:
     if manager._allowed_accounts is not None:
         accounts = [a for a in accounts if a.id in manager._allowed_accounts]
 
-    html = renderer.render_page(authenticated=True, accounts=accounts, manifest=manifest)
+    html = renderer.render_page(authenticated=True, accounts=accounts, manifest=manifest, install_path=install_base)
     return HTMLResponse(html)
 
 
 async def _install_login(request: Request) -> Response:
     """GET /install/login — Initiate OAuth for install."""
-    from ._oauth import AdobeOAuthClient, StateSerializer
+    from ._oauth import AdobeOAuthClient, StateSerializer, infer_install_url
 
     oauth_client: AdobeOAuthClient = request.app.state.oauth_client
     state_serializer: StateSerializer = request.app.state.state_serializer
 
     # Build redirect URL for install callback
-    base = f"{request.url.scheme}://{request.url.netloc}"
-    redirect_url = f"{base}/install/callback"
+    redirect_url = infer_install_url(request, "/install/callback")
 
     # Create signed state token
     state_data = {"redirect_url": redirect_url, "purpose": "install"}
@@ -186,8 +200,11 @@ async def _install_callback(request: Request) -> Response:
     error = request.query_params.get("error")
 
     if error:
+        from html import escape
+
+        error_description = escape(request.query_params.get("error_description", "Unknown error"))
         return HTMLResponse(
-            "<h1>Authentication Failed</h1><p>Please close this window and try again.</p>",
+            f"<h1>Authentication Failed</h1><p>{error_description}</p>",
             status_code=400,
         )
 
@@ -238,15 +255,16 @@ async def _install_callback(request: Request) -> Response:
 
     # Create signed cookie with session key
     cookie_value = state_serializer.dumps({"session_key": session_key})
+    install_base = _install_path(request)
 
-    response = RedirectResponse("/install", status_code=303)
+    response = RedirectResponse(install_base, status_code=303)
     response.set_cookie(
         key="install_session",
         value=cookie_value,
         httponly=True,
-        secure=request.url.scheme == "https",
+        secure=_is_secure(request),
         samesite="lax",
-        path="/install",
+        path=install_base,
         max_age=session_ttl,
     )
     return response
@@ -260,9 +278,10 @@ async def _install_workspaces(request: Request) -> Response:
 
     session = await _get_session(request)
     if session is None:
+        install_base = _install_path(request)
         if _is_htmx(request):
-            return Response(headers={"HX-Redirect": "/install"}, status_code=200)
-        return RedirectResponse("/install")
+            return Response(headers={"HX-Redirect": install_base}, status_code=200)
+        return RedirectResponse(install_base)
 
     account_id = request.query_params.get("account_id", "")
     if not account_id:
@@ -291,7 +310,7 @@ async def _install_workspaces(request: Request) -> Response:
     finally:
         await client.close()
 
-    html = renderer.render_workspaces_fragment(workspaces=workspaces)
+    html = renderer.render_workspaces_fragment(workspaces=workspaces, install_path=_install_path(request))
     return HTMLResponse(html)
 
 
@@ -305,9 +324,10 @@ async def _install_status(request: Request) -> Response:
 
     session = await _get_session(request)
     if session is None:
+        install_base = _install_path(request)
         if _is_htmx(request):
-            return Response(headers={"HX-Redirect": "/install"}, status_code=200)
-        return RedirectResponse("/install")
+            return Response(headers={"HX-Redirect": install_base}, status_code=200)
+        return RedirectResponse(install_base)
 
     account_id = request.query_params.get("account_id", "")
     workspace_id = request.query_params.get("workspace_id", "")
@@ -330,6 +350,7 @@ async def _install_status(request: Request) -> Response:
         installation=installation,
         manifest=manifest,
         diff=diff,
+        install_path=_install_path(request),
     )
     return HTMLResponse(html)
 
@@ -344,9 +365,10 @@ async def _install_execute(request: Request) -> Response:
 
     session = await _get_session(request)
     if session is None:
+        install_base = _install_path(request)
         if _is_htmx(request):
-            return Response(headers={"HX-Redirect": "/install"}, status_code=200)
-        return RedirectResponse("/install")
+            return Response(headers={"HX-Redirect": install_base}, status_code=200)
+        return RedirectResponse(install_base)
 
     form = await request.form()
     account_id = str(form.get("account_id", ""))
@@ -395,7 +417,7 @@ async def _install_execute(request: Request) -> Response:
             html = renderer.render_result_fragment(success=True, title="Successfully installed!", details=details)
         else:
             # Update existing
-            installation = await manager.update(
+            await manager.update(
                 token=session["access_token"],
                 account_id=account_id,
                 workspace_id=workspace_id,
@@ -415,9 +437,7 @@ async def _install_execute(request: Request) -> Response:
 
     except Exception as e:
         logger.exception("Installation failed")
-        # Check for permission errors
-        error_msg = str(e)
-        if "403" in error_msg or "401" in error_msg or "Forbidden" in error_msg:
+        if isinstance(e, httpx.HTTPStatusError) and e.response.status_code in (401, 403):
             error_msg = "You need workspace admin access to install this app."
         else:
             error_msg = "An unexpected error occurred. Please try again."
@@ -435,9 +455,10 @@ async def _install_uninstall(request: Request) -> Response:
 
     session = await _get_session(request)
     if session is None:
+        install_base = _install_path(request)
         if _is_htmx(request):
-            return Response(headers={"HX-Redirect": "/install"}, status_code=200)
-        return RedirectResponse("/install")
+            return Response(headers={"HX-Redirect": install_base}, status_code=200)
+        return RedirectResponse(install_base)
 
     form = await request.form()
     account_id = str(form.get("account_id", ""))
@@ -484,8 +505,7 @@ async def _install_uninstall(request: Request) -> Response:
 
     except Exception as e:
         logger.exception("Uninstall failed")
-        error_msg = str(e)
-        if "403" in error_msg or "401" in error_msg or "Forbidden" in error_msg:
+        if isinstance(e, httpx.HTTPStatusError) and e.response.status_code in (401, 403):
             error_msg = "You need workspace admin access to uninstall this app."
         else:
             error_msg = "An unexpected error occurred. Please try again."
@@ -514,8 +534,9 @@ async def _install_logout(request: Request) -> Response:
         except (SignatureExpired, BadSignature):
             pass
 
-    response = RedirectResponse(url="/install", status_code=303)
-    response.delete_cookie(key="install_session", path="/install")
+    install_base = _install_path(request)
+    response = RedirectResponse(url=install_base, status_code=303)
+    response.delete_cookie(key="install_session", path=install_base)
     return response
 
 

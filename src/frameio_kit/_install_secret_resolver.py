@@ -21,8 +21,7 @@ class InstallationSecretResolver:
     resolution for both webhook and action events based on the workspace's
     installation record.
 
-    This resolver is auto-wired when ``install`` is configured on the App,
-    unless the developer provides their own ``secret_resolver``.
+    This resolver is auto-wired when ``install`` is configured on the App.
     """
 
     def __init__(self, manager: InstallationManager) -> None:

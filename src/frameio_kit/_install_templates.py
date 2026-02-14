@@ -101,7 +101,7 @@ _BASE_TEMPLATE = """\
                         <h1 class="text-xl font-bold">{{ config.name }}</h1>
                     </div>
                     {% if authenticated %}
-                    <form method="post" action="/install/logout">
+                    <form method="post" action="{{ install_path }}/logout">
                         <button type="submit" class="text-sm text-gray-400 hover:text-gray-600">Logout</button>
                     </form>
                     {% endif %}
@@ -150,7 +150,7 @@ _UNAUTHENTICATED_CONTENT = """\
 
 <div class="text-center">
     <p class="text-sm mb-4" style="color: var(--fk-text-muted);">To install, sign in with your Adobe account.</p>
-    <a href="/install/login" class="fk-btn-primary inline-block">Login with Adobe</a>
+    <a href="{{ install_path }}/login" class="fk-btn-primary inline-block">Login with Adobe</a>
 </div>
 """
 
@@ -162,7 +162,7 @@ _AUTHENTICATED_CONTENT = """\
         <select id="account_id" name="account_id"
                 class="w-full rounded-lg border px-3 py-2 text-sm"
                 style="border-color: var(--fk-border);"
-                hx-get="/install/workspaces"
+                hx-get="{{ install_path }}/workspaces"
                 hx-target="#workspace-container"
                 hx-indicator="#ws-loading">
             <option value="">Select an account...</option>
@@ -201,7 +201,7 @@ _WORKSPACES_FRAGMENT = """\
 <select id="workspace_id" name="workspace_id"
         class="w-full rounded-lg border px-3 py-2 text-sm"
         style="border-color: var(--fk-border);"
-        hx-get="/install/status"
+        hx-get="{{ install_path }}/status"
         hx-target="#status-panel"
         hx-include="[name='account_id']"
         hx-indicator="#status-loading">
@@ -221,7 +221,7 @@ _WORKSPACES_FRAGMENT = """\
 
 _STATUS_NOT_INSTALLED = """\
 <section class="rounded-lg border p-4" style="border-color: var(--fk-border);"
-         hx-trigger="refreshStatus from:body" hx-get="/install/status"
+         hx-trigger="refreshStatus from:body" hx-get="{{ install_path }}/status"
          hx-include="[name='account_id'], [name='workspace_id']"
          hx-target="#status-panel">
     <h2 class="text-sm font-semibold mb-3">Ready to Install</h2>
@@ -240,7 +240,7 @@ _STATUS_NOT_INSTALLED = """\
         {% endfor %}
     </div>
     {% endif %}
-    <form hx-post="/install/execute" hx-target="#result-panel" hx-indicator="#action-loading" hx-swap="innerHTML">
+    <form hx-post="{{ install_path }}/execute" hx-target="#result-panel" hx-indicator="#action-loading" hx-swap="innerHTML">
         <input type="hidden" name="account_id" value="{{ account_id }}">
         <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
         <div class="flex items-center gap-2">
@@ -259,7 +259,7 @@ _STATUS_NOT_INSTALLED = """\
 
 _STATUS_INSTALLED = """\
 <section class="rounded-lg border p-4" style="border-color: var(--fk-border);"
-         hx-trigger="refreshStatus from:body" hx-get="/install/status"
+         hx-trigger="refreshStatus from:body" hx-get="{{ install_path }}/status"
          hx-include="[name='account_id'], [name='workspace_id']"
          hx-target="#status-panel">
     <div class="flex items-center gap-2 mb-1">
@@ -282,7 +282,7 @@ _STATUS_INSTALLED = """\
     </div>
     {% endif %}
     <div class="flex justify-end">
-        <form hx-post="/install/uninstall" hx-target="#result-panel" hx-indicator="#uninstall-loading" hx-swap="innerHTML">
+        <form hx-post="{{ install_path }}/uninstall" hx-target="#result-panel" hx-indicator="#uninstall-loading" hx-swap="innerHTML">
             <input type="hidden" name="account_id" value="{{ account_id }}">
             <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
             <div class="flex items-center gap-2">
@@ -302,7 +302,7 @@ _STATUS_INSTALLED = """\
 
 _STATUS_UPDATE_AVAILABLE = """\
 <section class="rounded-lg border p-4" style="border-color: var(--fk-border);"
-         hx-trigger="refreshStatus from:body" hx-get="/install/status"
+         hx-trigger="refreshStatus from:body" hx-get="{{ install_path }}/status"
          hx-include="[name='account_id'], [name='workspace_id']"
          hx-target="#status-panel">
     <div class="flex items-center gap-2 mb-1">
@@ -331,7 +331,7 @@ _STATUS_UPDATE_AVAILABLE = """\
     </div>
 
     <div class="flex items-center justify-between">
-        <form hx-post="/install/execute" hx-target="#result-panel" hx-indicator="#update-loading" hx-swap="innerHTML">
+        <form hx-post="{{ install_path }}/execute" hx-target="#result-panel" hx-indicator="#update-loading" hx-swap="innerHTML">
             <input type="hidden" name="account_id" value="{{ account_id }}">
             <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
             <div class="flex items-center gap-2">
@@ -345,7 +345,7 @@ _STATUS_UPDATE_AVAILABLE = """\
                 </div>
             </div>
         </form>
-        <form hx-post="/install/uninstall" hx-target="#result-panel" hx-indicator="#uninstall-loading2" hx-swap="innerHTML">
+        <form hx-post="{{ install_path }}/uninstall" hx-target="#result-panel" hx-indicator="#uninstall-loading2" hx-swap="innerHTML">
             <input type="hidden" name="account_id" value="{{ account_id }}">
             <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
             <div class="flex items-center gap-2">
@@ -412,6 +412,7 @@ class TemplateRenderer:
         authenticated: bool,
         accounts: list[object] | None = None,
         manifest: HandlerManifest | None = None,
+        install_path: str = "/install",
     ) -> str:
         """Render the full install page.
 
@@ -419,35 +420,38 @@ class TemplateRenderer:
             authenticated: Whether the user has a valid session.
             accounts: List of Frame.io account objects (if authenticated).
             manifest: Handler manifest (shown to unauthenticated users).
+            install_path: Mount-prefix-aware base path for install routes.
 
         Returns:
             Complete HTML page string.
         """
         if authenticated:
             content_template = self._env.from_string(_AUTHENTICATED_CONTENT)
-            content = content_template.render(accounts=accounts or [])
+            content = content_template.render(accounts=accounts or [], install_path=install_path)
         else:
             content_template = self._env.from_string(_UNAUTHENTICATED_CONTENT)
-            content = content_template.render(manifest=manifest)
+            content = content_template.render(manifest=manifest, install_path=install_path)
 
         page_template = self._env.from_string(_BASE_TEMPLATE)
         return page_template.render(
             config=self._config,
             authenticated=authenticated,
             content=content,
+            install_path=install_path,
         )
 
-    def render_workspaces_fragment(self, *, workspaces: list[object]) -> str:
+    def render_workspaces_fragment(self, *, workspaces: list[object], install_path: str = "/install") -> str:
         """Render the workspace dropdown HTMX fragment.
 
         Args:
             workspaces: List of Frame.io workspace objects.
+            install_path: Mount-prefix-aware base path for install routes.
 
         Returns:
             HTML fragment for the workspace select element.
         """
         template = self._env.from_string(_WORKSPACES_FRAGMENT)
-        return template.render(workspaces=workspaces)
+        return template.render(workspaces=workspaces, install_path=install_path)
 
     def render_status_fragment(
         self,
@@ -457,6 +461,7 @@ class TemplateRenderer:
         installation: Installation | None,
         manifest: HandlerManifest,
         diff: InstallationDiff | None = None,
+        install_path: str = "/install",
     ) -> str:
         """Render the status panel HTMX fragment.
 
@@ -466,6 +471,7 @@ class TemplateRenderer:
             installation: Existing installation record (or None).
             manifest: Current handler manifest.
             diff: Installation diff (if update available).
+            install_path: Mount-prefix-aware base path for install routes.
 
         Returns:
             HTML fragment for the status panel.
@@ -476,6 +482,7 @@ class TemplateRenderer:
                 manifest=manifest,
                 account_id=account_id,
                 workspace_id=workspace_id,
+                install_path=install_path,
             )
 
         if diff and diff.has_changes:
@@ -485,6 +492,7 @@ class TemplateRenderer:
                 diff=diff,
                 account_id=account_id,
                 workspace_id=workspace_id,
+                install_path=install_path,
             )
 
         template = self._env.from_string(_STATUS_INSTALLED)
@@ -492,6 +500,7 @@ class TemplateRenderer:
             installation=installation,
             account_id=account_id,
             workspace_id=workspace_id,
+            install_path=install_path,
         )
 
     def render_result_fragment(

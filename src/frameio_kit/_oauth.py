@@ -592,6 +592,7 @@ def _extract_mount_prefix(request) -> str:
         "/install/uninstall",
         "/install/execute",
         "/install/status",
+        "/install/logout",
         "/install/login",
         "/install",
         "/auth/callback",
@@ -637,18 +638,32 @@ def infer_oauth_url(request, path: str) -> str:
     return f"{base}{mount_prefix}{path}"
 
 
-def infer_install_url(request) -> str:
-    """Infer the public base URL for webhook/action callbacks from a request.
+def infer_install_url(request, path: str = "") -> str:
+    """Infer an install URL from an incoming request.
 
-    Returns the scheme + netloc portion (e.g., "https://myapp.com").
+    Extracts the base URL (scheme + netloc) and mount prefix from the request,
+    then constructs the specified path.
 
     Args:
         request: Starlette Request object.
+        path: Optional path to append (e.g., "/install/callback").
 
     Returns:
-        The public base URL string.
+        Full URL string.
+
+    Example:
+        # App mounted at root
+        infer_install_url(request) -> "https://example.com"
+
+        # App mounted at /frameio
+        infer_install_url(request) -> "https://example.com/frameio"
+
+        # With path
+        infer_install_url(request, "/install/callback") -> "https://example.com/frameio/install/callback"
     """
-    return f"{request.url.scheme}://{request.url.netloc}"
+    base = f"{request.url.scheme}://{request.url.netloc}"
+    mount_prefix = _extract_mount_prefix(request)
+    return f"{base}{mount_prefix}{path}"
 
 
 def get_oauth_redirect_url(oauth_config: OAuthConfig, request) -> str:
