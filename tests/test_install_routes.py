@@ -225,6 +225,25 @@ class TestAppInstallConfiguration:
         assert "my_app.transcribe" in app._action_handlers
 
 
+class TestAllowedAccounts:
+    def test_allowed_accounts_passed_to_manager(self, oauth_config):
+        app = App(
+            oauth=oauth_config,
+            install=True,
+            name="Test App",
+            allowed_accounts=["acc-1", "acc-2"],
+        )
+        assert app._install_manager._allowed_accounts == {"acc-1", "acc-2"}
+
+    def test_allowed_accounts_default_none(self, oauth_config):
+        app = App(
+            oauth=oauth_config,
+            install=True,
+            name="Test App",
+        )
+        assert app._install_manager._allowed_accounts is None
+
+
 class TestFastAPIMount:
     """Test that frameio-kit works when mounted inside a FastAPI app."""
 

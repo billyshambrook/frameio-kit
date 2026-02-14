@@ -126,6 +126,7 @@ These parameters are passed directly to `App(...)`:
 | `custom_css` | `str \| None` | `None` | Raw CSS injected into templates |
 | `show_powered_by` | `bool` | `True` | Show "Powered by frameio-kit" footer |
 | `base_url` | `str \| None` | `None` | Public URL override (else inferred from request) |
+| `allowed_accounts` | `list[str] \| None` | `None` | Account IDs allowed to install (None = all) |
 | `install_session_ttl` | `int` | `1800` | Install session TTL in seconds (30 min) |
 
 ## Branding
@@ -147,6 +148,23 @@ app = App(
 ```
 
 The UI uses CSS custom properties (`--fk-primary`, `--fk-accent`, etc.) derived from your configuration, combined with Tailwind CSS for layout and spacing.
+
+## Restricting Access
+
+By default, any Frame.io user who authenticates can install the app to any account they belong to. To restrict installation to specific accounts, use `allowed_accounts`:
+
+```python
+app = App(
+    oauth=OAuthConfig(...),
+    install=True,
+    name="Internal Tool",
+    allowed_accounts=[
+        "12345678-1234-1234-1234-123456789abc",  # Production account
+    ],
+)
+```
+
+When set, only the listed accounts appear in the account dropdown and install/uninstall requests for other accounts are rejected. This is useful for internal tools that should only run within your own organization's accounts.
 
 ## Storage
 

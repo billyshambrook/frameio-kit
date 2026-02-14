@@ -131,6 +131,7 @@ class App:
         install: bool = False,
         install_session_ttl: int = 1800,
         base_url: str | None = None,
+        allowed_accounts: list[str] | None = None,
         # Branding (used by both install UI and auth callback pages)
         name: str | None = None,
         description: str = "",
@@ -164,6 +165,11 @@ class App:
                 30 minutes (1800).
             base_url: Explicit public URL for the app. If not set, the URL is
                 inferred from incoming requests.
+            allowed_accounts: Optional list of Frame.io account IDs that are
+                permitted to install the app. When set, only these accounts
+                are shown in the install UI and install/uninstall requests
+                for other accounts are rejected. When None (default), all
+                accounts are available.
             name: Display name shown in the install and auth UI headers.
                 Defaults to ``"Authentication"`` when None.
             description: Description shown on the landing page.
@@ -182,6 +188,7 @@ class App:
         self._install_enabled = install
         self._install_session_ttl = install_session_ttl
         self._base_url = base_url
+        self._allowed_accounts = allowed_accounts
         self._api_client: Client | None = None
         self._webhook_handlers: dict[str, _HandlerRegistration] = {}
         self._action_handlers: dict[str, _HandlerRegistration] = {}
@@ -230,6 +237,7 @@ class App:
                 encryption=encryption,
                 app_name=self._branding.name,
                 base_url=self._api_url,
+                allowed_accounts=self._allowed_accounts,
             )
             self._template_renderer = TemplateRenderer(branding=self._branding)
 

@@ -142,6 +142,10 @@ async def _install_page(request: Request) -> Response:
     finally:
         await client.close()
 
+    # Filter to allowed accounts when an allowlist is configured
+    if manager._allowed_accounts is not None:
+        accounts = [a for a in accounts if a.id in manager._allowed_accounts]
+
     html = renderer.render_page(authenticated=True, accounts=accounts, manifest=manifest)
     return HTMLResponse(html)
 
@@ -275,6 +279,9 @@ async def _install_workspaces(request: Request) -> Response:
     from ._client import Client
 
     manager: InstallationManager = request.app.state.install_manager
+
+    if not manager.is_account_allowed(account_id):
+        return HTMLResponse("<p class='text-sm text-red-500'>Account not allowed.</p>", status_code=403)
     client = Client(token=session["access_token"], base_url=manager._base_url)
     try:
         workspaces = await _paginate_all(client.workspaces.index, account_id)
@@ -353,6 +360,12 @@ async def _install_execute(request: Request) -> Response:
             success=False, title="Invalid Parameters", error="Invalid account or workspace ID."
         )
         return HTMLResponse(html, status_code=400)
+
+    if not manager.is_account_allowed(account_id):
+        html = renderer.render_result_fragment(
+            success=False, title="Not Allowed", error="This account is not permitted to install this app."
+        )
+        return HTMLResponse(html, status_code=403)
 
     base_url = _infer_base_url(request)
 
@@ -438,6 +451,12 @@ async def _install_uninstall(request: Request) -> Response:
             success=False, title="Invalid Parameters", error="Invalid account or workspace ID."
         )
         return HTMLResponse(html, status_code=400)
+
+    if not manager.is_account_allowed(account_id):
+        html = renderer.render_result_fragment(
+            success=False, title="Not Allowed", error="This account is not permitted to install this app."
+        )
+        return HTMLResponse(html, status_code=403)
 
     try:
         existing = await manager.get_installation(account_id, workspace_id)

@@ -574,6 +574,39 @@ class TestValidateUuid:
             validate_uuid("", "test")
 
 
+class TestIsAccountAllowed:
+    def test_no_allowlist_allows_all(self, manager):
+        assert manager.is_account_allowed("any-account-id") is True
+
+    def test_allowlist_allows_listed_account(self, storage, encryption):
+        mgr = InstallationManager(
+            storage=storage,
+            encryption=encryption,
+            app_name="Test App",
+            allowed_accounts=["acc-1", "acc-2"],
+        )
+        assert mgr.is_account_allowed("acc-1") is True
+        assert mgr.is_account_allowed("acc-2") is True
+
+    def test_allowlist_rejects_unlisted_account(self, storage, encryption):
+        mgr = InstallationManager(
+            storage=storage,
+            encryption=encryption,
+            app_name="Test App",
+            allowed_accounts=["acc-1"],
+        )
+        assert mgr.is_account_allowed("acc-99") is False
+
+    def test_empty_allowlist_rejects_all(self, storage, encryption):
+        mgr = InstallationManager(
+            storage=storage,
+            encryption=encryption,
+            app_name="Test App",
+            allowed_accounts=[],
+        )
+        assert mgr.is_account_allowed("acc-1") is False
+
+
 class TestEncryptDecryptSecrets:
     def test_round_trip(self, manager):
         original = "my-super-secret"

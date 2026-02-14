@@ -68,11 +68,23 @@ class InstallationManager:
         encryption: TokenEncryption,
         app_name: str,
         base_url: str | None = None,
+        allowed_accounts: list[str] | None = None,
     ) -> None:
         self.storage = storage
         self.encryption = encryption
         self._app_name = app_name
         self._base_url = base_url
+        self._allowed_accounts: set[str] | None = set(allowed_accounts) if allowed_accounts is not None else None
+
+    def is_account_allowed(self, account_id: str) -> bool:
+        """Check whether an account is permitted to install this app.
+
+        Returns True if no allowlist is configured or if the account
+        is in the allowlist.
+        """
+        if self._allowed_accounts is None:
+            return True
+        return account_id in self._allowed_accounts
 
     def build_manifest(
         self,
