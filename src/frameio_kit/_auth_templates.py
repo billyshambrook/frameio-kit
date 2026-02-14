@@ -64,20 +64,7 @@ _SUCCESS_CONTENT = """\
         </svg>
     </div>
     <h2 class="text-lg font-semibold mb-2" style="color: var(--fk-text);">Authentication Successful!</h2>
-    <p class="text-sm mb-4" style="color: var(--fk-text-muted);">You have successfully signed in. This window will close automatically.</p>
-    <p class="text-xs" style="color: var(--fk-text-muted);">Closing in <span id="countdown">3</span> seconds...</p>
-    <script>
-        let seconds = 3;
-        const el = document.getElementById('countdown');
-        const timer = setInterval(() => {{
-            seconds--;
-            el.textContent = seconds;
-            if (seconds <= 0) {{
-                clearInterval(timer);
-                window.close();
-            }}
-        }}, 1000);
-    </script>
+    <p class="text-sm mb-4" style="color: var(--fk-text-muted);">You have successfully signed in. You can close this tab and go back to Frame.io.</p>
 </div>
 """
 
