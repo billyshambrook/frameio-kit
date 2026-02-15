@@ -77,9 +77,9 @@ uv run prek install
 ### Development
 
 ```bash
-uv run pytest              # Run tests
+uv run pytest                # Run tests
 uv run prek run --all-files  # Run static checks
-uv run zensical serve      # Build docs locally
+uv run zensical serve        # Build docs locally
 ```
 
 ### Getting Help
