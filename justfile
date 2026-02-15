@@ -11,4 +11,4 @@ static-checks: build
     uv run prek run --all-files
 
 docs:
-    uv run mkdocs serve --livereload
+    uv run zensical serve

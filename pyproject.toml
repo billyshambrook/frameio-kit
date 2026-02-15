@@ -54,8 +54,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
-    "mkdocs>=1.6.1",
-    "mkdocs-material>=9.6.21",
+    "zensical",
     "mkdocstrings-python>=1.18.2",
     "ty>=0.0.15",
     "fastapi>=0.115.0",
