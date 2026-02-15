@@ -39,11 +39,11 @@ app = App(token=os.getenv("FRAMEIO_TOKEN"))
 
 ### Getting an API Token
 
-Follow the [Server to Server Authentication](https://developer.staging.frame.io/platform/docs/guides/authentication#server-to-server-authentication) guide to get an access token.
+Follow the [Server to Server Authentication](https://next.developer.frame.io/platform/docs/guides/authentication#server-to-server-authentication) guide to get an access token.
 
 ## API Structure
 
-See the python examples in Frame.io's [API Reference](https://developer.staging.frame.io/platform/api-reference/account-permissions/index) for the available endpoints.
+See the Python examples in Frame.io's [API Reference](https://next.developer.frame.io/platform/api-reference/account-permissions/index) for the available endpoints.
 
 ## Example: File Processing with Comments
 
@@ -62,15 +62,15 @@ async def process_file(event: WebhookEvent):
         file_id=event.resource_id
     )
     print(f"Processing: {file.data.name}")
-    
+
     # Simulate processing
     await process_file_content(file)
-    
+
     # Add a comment to the file
     await app.client.comments.create(
         account_id=event.account_id,
         file_id=event.resource_id,
-        data=CreateCommentParamsData(text="✅ File processed successfully!")
+        data=CreateCommentParamsData(text="File processed successfully!")
     )
 
 async def process_file_content(file):
@@ -129,4 +129,4 @@ async def my_action(event: ActionEvent):
         file = await user_client.files.show(...)
 ```
 
-See the [User Authentication guide](user_auth.md) for details on enabling Adobe Login OAuth.
+See the [User Authentication guide](user-auth.md) for details on enabling Adobe Login OAuth.

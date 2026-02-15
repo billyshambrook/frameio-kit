@@ -1,10 +1,6 @@
-# frameio-kit: Build Powerful Frame.io Integrations in Minutes
+# frameio-kit
 
-**frameio-kit** is the fastest way to build robust, scalable integrations with Frame.io. Stop wrestling with webhook signatures, API authentication, and event parsing – focus on what makes your integration unique.
-
-## 🚀 Get Started in 5 Minutes
-
-Ready to build your first Frame.io integration? Our [Getting Started guide](usage/getting_started.md) will have you up and running with both webhooks and custom actions in just a few minutes.
+A Python framework for building Frame.io integrations. Handle webhooks, custom actions, OAuth, and API calls with minimal boilerplate — you write the business logic, frameio-kit handles the rest.
 
 ```python
 from frameio_kit import App, WebhookEvent, ActionEvent, Message
@@ -20,105 +16,29 @@ async def analyze_file(event: ActionEvent):
     return Message(title="Analysis Complete", description="File analyzed successfully!")
 ```
 
-## ⚡ Why frameio-kit?
+## Where to Start
 
-- **Decorator-based routing** - `@app.on_webhook` and `@app.on_action` make event handling trivial
-- **Automatic validation** - Pydantic models give you full type safety and editor support
-- **Modern Python** - Built for Python 3.13+ with full type hints
-- **Secure by default** - Built-in signature verification for all requests
-- **Error handling** - Graceful failure handling and retry logic
+**New to Frame.io app development?** Read [How Frame.io Apps Work](concepts.md) for an overview of webhooks, custom actions, and authentication.
 
-## 🎯 What Can You Build?
+**Ready to build?** The [Quickstart](getting-started/quickstart.md) gets you from zero to a working integration in minutes.
 
-### **Automated Workflows**
-- **File processing pipelines** - Automatically process videos, images, and documents
-- **Content moderation** - Scan and approve content before publication
-- **Asset management** - Organize, tag, and categorize your media library
+**Know what you need?** Jump directly to the [Guides](guides/app.md) for in-depth coverage of specific features.
 
-### **Interactive Tools**
-- **Custom actions** - Build right-click menu items that do exactly what you need
-- **User forms** - Collect input with interactive forms in the Frame.io UI
-- **Real-time notifications** - Keep teams updated with instant alerts
+## Key Features
 
-### **API Integrations**
-- **Third-party services** - Connect Frame.io to your favorite tools
-- **Data synchronization** - Keep external systems in sync with Frame.io
-- **Custom dashboards** - Build analytics and reporting tools
+- **Decorator-based routing** — `@app.on_webhook` and `@app.on_action` map events to handler functions
+- **Automatic validation** — Pydantic models give you full type safety and editor support
+- **Secure by default** — built-in signature verification for all incoming requests
+- **OAuth integration** — Adobe Login support for user-specific authentication
+- **Self-service installation** — branded install pages for workspace admins
+- **ASGI-compatible** — mount into FastAPI, Starlette, or any ASGI framework
+- **Built for Python 3.14+** with full type hints
 
-## 📚 Learn More
+## Learn More
 
-### **Core Concepts**
-- **[App Configuration](usage/app.md)** - Configure middleware, OAuth, and dynamic secret resolution
-- **[Webhooks](usage/webhooks.md)** - React to Frame.io events automatically
-- **[Custom Actions](usage/custom_actions.md)** - Build interactive user experiences
-- **[Client API](usage/client_api.md)** - Make calls back to Frame.io's API
-- **[Middleware](usage/middleware.md)** - Add cross-cutting concerns to your integration
-- **[User Authentication](usage/user_auth.md)** - Enable Adobe Login OAuth for user-specific actions
-
-### **Advanced Features**
-- **[Installation System](usage/installation.md)** - Self-service installation pages for workspace admins with branded UI
-- **[Mounting to Existing Apps](usage/mounting.md)** - Integrate with FastAPI, Starlette, or any ASGI framework
-- **[API Reference](api_reference.md)** - Complete documentation for all classes and methods
-- **Type safety** - Full Pydantic models for all event types
-- **Async patterns** - Best practices for high-performance integrations
-
-## 🛠️ Quick Examples
-
-### **File Processing Pipeline**
-```python
-from frameio import CreateCommentParamsData
-
-@app.on_webhook("file.ready", secret=os.environ["WEBHOOK_SECRET"])
-async def process_file(event: WebhookEvent):
-    # Get file details
-    file = await app.client.files.show(
-        account_id=event.account_id,
-        file_id=event.resource_id,
-    )
-
-    # Process the file
-    result = await my_processing_service.process(file)
-
-    # Add a comment back to Frame.io
-    await app.client.comments.create(
-        account_id=event.account_id,
-        file_id=event.resource_id,
-        data=CreateCommentParamsData(text=f"Processing complete! Result: {result}")
-    )
-```
-
-### **Interactive Custom Action**
-```python
-@app.on_action("asset.publish", name="Publish Asset", description="Publish to social media", secret=os.environ["ACTION_SECRET"])
-async def publish_asset(event: ActionEvent):
-    if event.data:
-        # Form was submitted
-        platform = event.data.get("platform")
-        caption = event.data.get("caption")
-        
-        # Publish the asset
-        await publish_to_social_media(event.resource_id, platform, caption)
-        
-        return Message(title="Published!", description=f"Posted to {platform}")
-    
-    # Show the form
-    return Form(
-        title="Publish to Social Media",
-        description="Choose where to publish:",
-        fields=[
-            SelectField(label="Platform", name="platform", options=PLATFORMS),
-            TextField(label="Caption", name="caption", value="Enter your caption...")
-        ]
-    )
-```
-
-## 🎉 Ready to Build?
-
-1. **Start with our [Getting Started guide](usage/getting_started.md)** - Get up and running in minutes
-2. **Explore the [Usage Guides](usage/webhooks.md)** - Learn about webhooks, actions, and more
-3. **Check out the [API reference](api_reference.md)** - Complete documentation
-4. **Build something amazing** - The only limit is your imagination!
-
----
-
-**frameio-kit** - Because building Frame.io integrations should be fun, not frustrating. 🚀
+- [How Frame.io Apps Work](concepts.md) — understand the concepts before diving in
+- [Installation](getting-started/installation.md) — install frameio-kit and set up prerequisites
+- [Quickstart](getting-started/quickstart.md) — build your first integration
+- [Guides](guides/app.md) — in-depth guides for every feature
+- [API Reference](reference/api.md) — complete documentation for all classes and methods
+- [Frame.io Developer Portal](https://next.developer.frame.io) — official Frame.io v4 API documentation

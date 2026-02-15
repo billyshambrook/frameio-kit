@@ -16,16 +16,18 @@ Custom Actions are ideal when you need to:
 
 1. **User clicks action** in the Frame.io UI (right-click menu, toolbar, etc.)
 2. **Your handler is called** with the action event
-3. **Return a response** - either a [`Message`](../api_reference.md#frameio_kit.Message) for simple feedback or a [`Form`](../api_reference.md#frameio_kit.Form) for user input
+3. **Return a response** - either a [`Message`](../reference/api.md#frameio_kit.Message) for simple feedback or a [`Form`](../reference/api.md#frameio_kit.Form) for user input
 4. **If Form returned** - user fills it out and submits, your handler is called again with the form data
 
 ```
 User Click → Handler → Message (done) OR Form → User Input → Handler → Message
 ```
 
+For more on how custom actions work in Frame.io, see the [Frame.io custom actions documentation](https://next.developer.frame.io/platform/docs/guides/custom-actions).
+
 ## Action Decorator
 
-Use the [`@app.on_action`](../api_reference.md#frameio_kit.App.on_action) decorator to register handlers:
+Use the [`@app.on_action`](../reference/api.md#frameio_kit.App.on_action) decorator to register handlers:
 
 ```python
 import os
@@ -62,11 +64,11 @@ async def transcribe_file(event: ActionEvent):
 
 ### Parameters
 
-- [`event_type`](../api_reference.md#frameio_kit.App.on_action\(event_type\)) *(str)*: Unique identifier for this action
-- [`name`](../api_reference.md#frameio_kit.App.on_action\(name\)) *(str)*: Display name in Frame.io UI
-- [`description`](../api_reference.md#frameio_kit.App.on_action\(description\)) *(str)*: Description shown in UI
-- [`secret`](../api_reference.md#frameio_kit.App.on_action\(secret\)) *(str | None, optional)*: Signing secret from Frame.io. If not provided, falls back to the `CUSTOM_ACTION_SECRET` environment variable. Explicit parameter takes precedence over environment variable.
-- [`require_user_auth`](../api_reference.md#frameio_kit.App.on_action\(require_user_auth\)) *(bool, optional)*: Require user to authenticate via Adobe Login OAuth. When `True`, users must sign in before the action executes. See [User Authentication](user_auth.md) for details.
+- [`event_type`](../reference/api.md#frameio_kit.App.on_action\(event_type\)) *(str)*: Unique identifier for this action
+- [`name`](../reference/api.md#frameio_kit.App.on_action\(name\)) *(str)*: Display name in Frame.io UI
+- [`description`](../reference/api.md#frameio_kit.App.on_action\(description\)) *(str)*: Description shown in UI
+- [`secret`](../reference/api.md#frameio_kit.App.on_action\(secret\)) *(str | None, optional)*: Signing secret from Frame.io. If not provided, falls back to the `CUSTOM_ACTION_SECRET` environment variable. Explicit parameter takes precedence over environment variable.
+- [`require_user_auth`](../reference/api.md#frameio_kit.App.on_action\(require_user_auth\)) *(bool, optional)*: Require user to authenticate via Adobe Login OAuth. When `True`, users must sign in before the action executes. See [User Authentication](user-auth.md) for details.
 
 !!! note "Environment Variables"
     **Single action:** Use the default `CUSTOM_ACTION_SECRET` environment variable and omit the `secret` parameter.
@@ -75,7 +77,7 @@ async def transcribe_file(event: ActionEvent):
 
 ## Action Event Object
 
-The [`ActionEvent`](../api_reference.md#frameio_kit.ActionEvent) object provides access to action data:
+The [`ActionEvent`](../reference/api.md#frameio_kit.ActionEvent) object provides access to action data:
 
 ```python
 from frameio_kit import ActionEvent
@@ -91,7 +93,7 @@ async def handler(event: ActionEvent):
 
 Custom Actions support two response types:
 
-### [`Message`](../api_reference.md#frameio_kit.Message) - Simple Feedback
+### [`Message`](../reference/api.md#frameio_kit.Message) - Simple Feedback
 
 For actions that complete immediately without user input:
 
@@ -104,7 +106,7 @@ return Message(
 )
 ```
 
-### [`Form`](../api_reference.md#frameio_kit.Form) - User Input
+### [`Form`](../reference/api.md#frameio_kit.Form) - User Input
 
 For actions that need user input:
 
@@ -124,11 +126,11 @@ return Form(
 
 | Field Type | Use Case | Example |
 |------------|----------|---------|
-| [`TextField`](../api_reference.md#frameio_kit.TextField) | Single line text | Names, titles, IDs |
-| [`TextareaField`](../api_reference.md#frameio_kit.TextareaField) | Multi-line text | Comments, descriptions |
-| [`SelectField`](../api_reference.md#frameio_kit.SelectField) | Choose from options | Categories, platforms |
-| [`CheckboxField`](../api_reference.md#frameio_kit.CheckboxField) | Checkbox toggle | Yes/no, enable/disable |
-| [`LinkField`](../api_reference.md#frameio_kit.LinkField) | URL link | External resources |
+| [`TextField`](../reference/api.md#frameio_kit.TextField) | Single line text | Names, titles, IDs |
+| [`TextareaField`](../reference/api.md#frameio_kit.TextareaField) | Multi-line text | Comments, descriptions |
+| [`SelectField`](../reference/api.md#frameio_kit.SelectField) | Choose from options | Categories, platforms |
+| [`CheckboxField`](../reference/api.md#frameio_kit.CheckboxField) | Checkbox toggle | Yes/no, enable/disable |
+| [`LinkField`](../reference/api.md#frameio_kit.LinkField) | URL link | External resources |
 
 ## Example 1: Single Action (Default Env Var)
 
@@ -255,7 +257,7 @@ When you need to resolve action secrets dynamically (e.g., from a database for m
 
 ### Decorator-Level Resolver
 
-Provide an async function that receives the [`ActionEvent`](../api_reference.md#frameio_kit.ActionEvent) and returns the secret:
+Provide an async function that receives the [`ActionEvent`](../reference/api.md#frameio_kit.ActionEvent) and returns the secret:
 
 ```python
 from frameio_kit import App, ActionEvent, Message
@@ -287,7 +289,7 @@ async def process_file(event: ActionEvent):
 ## Setting Up Custom Actions in Frame.io
 
 1. **Go to Workspace Settings** in Frame.io
-2. **Navigate to Actions** section  
+2. **Navigate to Actions** section
 3. **Create a new Custom Action**:
    - Name: Display name in UI
    - Description: What the action does
