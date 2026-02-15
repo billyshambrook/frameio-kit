@@ -43,7 +43,7 @@ from starlette.types import Receive, Scope, Send
 
 from ._auth_routes import create_auth_routes
 from ._client import Client
-from ._context import _user_token_context
+from ._context import _install_config_context, _user_token_context
 from ._events import ActionEvent, AnyEvent, WebhookEvent
 from ._exceptions import (
     ConfigurationError,
@@ -129,6 +129,7 @@ class App:
         encryption_key: str | None = None,
         # Install system
         install: bool = False,
+        install_fields: list | None = None,
         install_session_ttl: int = 1800,
         base_url: str | None = None,
         allowed_accounts: list[str] | None = None,
@@ -161,6 +162,8 @@ class App:
                 uses FRAMEIO_AUTH_ENCRYPTION_KEY env var or generates ephemeral key.
             install: Whether to enable the self-service ``/install`` page.
                 Requires ``oauth`` to also be configured.
+            install_fields: Optional list of ``InstallField`` declarations for
+                collecting configuration from workspace admins during install.
             install_session_ttl: Install session TTL in seconds. Defaults to
                 30 minutes (1800).
             base_url: Explicit public URL for the app. If not set, the URL is
@@ -186,6 +189,7 @@ class App:
         self._storage = storage
         self._encryption_key = encryption_key
         self._install_enabled = install
+        self._install_fields = self._validate_install_fields(install_fields or []) if install else ()
         self._install_session_ttl = install_session_ttl
         self._base_url = base_url
         self._allowed_accounts = allowed_accounts
@@ -238,6 +242,7 @@ class App:
                 app_name=self._branding.name,
                 base_url=self._api_url,
                 allowed_accounts=self._allowed_accounts,
+                install_fields=self._install_fields,
             )
             self._template_renderer = TemplateRenderer(branding=self._branding)
 
@@ -306,6 +311,41 @@ class App:
         if not self._oauth_manager:
             raise RuntimeError("Cannot access token manager. OAuth not configured in App initialization.")
         return self._oauth_manager.token_manager
+
+    @staticmethod
+    def _validate_install_fields(fields: list) -> tuple:
+        """Validate and freeze the install_fields list.
+
+        Returns:
+            Tuple of validated InstallField instances.
+
+        Raises:
+            ConfigurationError: If validation fails.
+        """
+        from ._install_models import InstallField, _RESERVED_FIELD_NAMES, _VALID_FIELD_TYPES
+
+        if not fields:
+            return ()
+
+        result: list[InstallField] = []
+        seen_names: set[str] = set()
+        for f in fields:
+            if not isinstance(f, InstallField):
+                raise ConfigurationError(f"install_fields must contain InstallField instances, got {type(f).__name__}")
+            if f.name in seen_names:
+                raise ConfigurationError(f"Duplicate install field name: '{f.name}'")
+            if f.name in _RESERVED_FIELD_NAMES:
+                raise ConfigurationError(f"Reserved install field name: '{f.name}'")
+            if f.type not in _VALID_FIELD_TYPES:
+                raise ConfigurationError(
+                    f"Invalid install field type '{f.type}' for field '{f.name}'. "
+                    f"Must be one of: {', '.join(sorted(_VALID_FIELD_TYPES))}"
+                )
+            if f.type == "select" and not f.options:
+                raise ConfigurationError(f"Select field '{f.name}' must have options")
+            seen_names.add(f.name)
+            result.append(f)
+        return tuple(result)
 
     def validate_configuration(self) -> list[str]:
         """Check configuration is valid before accepting requests.
@@ -554,6 +594,7 @@ class App:
             starlette_app.state.install_session_ttl = self._install_session_ttl
             starlette_app.state.base_url = self._base_url
             starlette_app.state.template_renderer = self._template_renderer
+            starlette_app.state.install_fields = self._install_fields
             # Store references so the manifest can be built lazily (handlers
             # are registered via decorators after __init__ completes).
             starlette_app.state._webhook_handlers = self._webhook_handlers
@@ -690,6 +731,12 @@ class App:
             await self._request_handler.verify(request.headers, body, resolved_secret)
         except SignatureVerificationError:
             return Response("Invalid signature.", status_code=401)
+
+        # Set install config in context if available
+        if self._install_fields and self._install_manager:
+            installation = await self._install_manager.get_installation(event.account_id, event.workspace_id)
+            if installation and installation.config:
+                _install_config_context.set(installation.config)
 
         # Process event
         try:

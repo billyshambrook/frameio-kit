@@ -4,7 +4,7 @@ from ._app import (
     WebhookHandlerFunc,
 )
 from ._client import Client
-from ._context import get_user_token
+from ._context import get_install_config, get_user_token
 from ._events import Account, ActionEvent, AnyEvent, Project, Resource, User, WebhookEvent, Workspace
 from ._exceptions import (
     ConfigurationError,
@@ -34,7 +34,7 @@ from ._responses import (
     TextareaField,
     TextField,
 )
-from ._install_models import ActionRecord, Installation, WebhookRecord
+from ._install_models import ActionRecord, InstallField, Installation, WebhookRecord
 from ._security import verify_signature
 
 __all__ = [
@@ -45,6 +45,7 @@ __all__ = [
     # _client.py
     "Client",
     # _context.py
+    "get_install_config",
     "get_user_token",
     # _events.py
     "Account",
@@ -68,6 +69,7 @@ __all__ = [
     "TokenRefreshError",
     # _install_models.py
     "ActionRecord",
+    "InstallField",
     "Installation",
     "WebhookRecord",
     # _middleware.py

@@ -12,6 +12,7 @@ from frameio_kit._install_models import (
     ActionManifestEntry,
     ActionRecord,
     HandlerManifest,
+    InstallField,
     Installation,
     WebhookRecord,
 )
@@ -614,3 +615,156 @@ class TestEncryptDecryptSecrets:
         assert encrypted != original
         decrypted = manager._decrypt_secret(encrypted)
         assert decrypted == original
+
+
+class TestConfigStorage:
+    @pytest.fixture
+    def manager_with_fields(self, storage, encryption):
+        return InstallationManager(
+            storage=storage,
+            encryption=encryption,
+            app_name="Test App",
+            install_fields=(
+                InstallField(name="api_key", label="API Key", type="password"),
+                InstallField(name="env", label="Environment", type="select", options=("prod", "staging")),
+            ),
+        )
+
+    async def test_install_stores_config(self, manager_with_fields):
+        manifest = HandlerManifest(webhook_events=["file.ready"], actions=[])
+        mock_webhook_response = MagicMock()
+        mock_webhook_response.data.id = "wh-1"
+        mock_webhook_response.data.secret = "wh-secret"
+
+        with patch("frameio_kit._install_manager.Client") as MockClient:
+            mock_client = AsyncMock()
+            mock_client.webhooks.create = AsyncMock(return_value=mock_webhook_response)
+            mock_client.close = AsyncMock()
+            MockClient.return_value = mock_client
+
+            result = await manager_with_fields.install(
+                token="test-token",
+                account_id="acc-1",
+                workspace_id="ws-1",
+                base_url="https://myapp.com",
+                manifest=manifest,
+                config={"api_key": "secret123", "env": "prod"},
+            )
+
+        assert result.config == {"api_key": "secret123", "env": "prod"}
+
+        # Verify round-trip through storage
+        retrieved = await manager_with_fields.get_installation("acc-1", "ws-1")
+        assert retrieved is not None
+        assert retrieved.config is not None
+        assert retrieved.config["api_key"] == "secret123"
+        assert retrieved.config["env"] == "prod"
+
+    async def test_sensitive_config_encrypted_at_rest(self, manager_with_fields, storage):
+        now = datetime.now(tz=timezone.utc)
+        installation = Installation(
+            account_id="acc-1",
+            workspace_id="ws-1",
+            installed_at=now,
+            updated_at=now,
+            config={"api_key": "secret123", "env": "prod"},
+        )
+
+        await manager_with_fields._store_installation(installation)
+
+        # Read raw data from storage (before decryption)
+        raw = await storage.get("install:acc-1:ws-1")
+        assert raw is not None
+        # api_key should be encrypted (not plaintext)
+        assert raw["config"]["api_key"] != "secret123"
+        # env should be plaintext (not sensitive)
+        assert raw["config"]["env"] == "prod"
+
+        # Decrypted retrieval should work
+        retrieved = await manager_with_fields.get_installation("acc-1", "ws-1")
+        assert retrieved is not None
+        assert retrieved.config is not None
+        assert retrieved.config["api_key"] == "secret123"
+
+    async def test_update_merges_config(self, manager_with_fields):
+        now = datetime.now(tz=timezone.utc)
+        existing = Installation(
+            account_id="acc-1",
+            workspace_id="ws-1",
+            installed_at=now,
+            updated_at=now,
+            config={"api_key": "old-secret", "env": "staging"},
+        )
+        await manager_with_fields._store_installation(existing)
+
+        manifest = HandlerManifest(webhook_events=[], actions=[])
+
+        with patch("frameio_kit._install_manager.Client") as MockClient:
+            mock_client = AsyncMock()
+            mock_client.close = AsyncMock()
+            MockClient.return_value = mock_client
+
+            result = await manager_with_fields.update(
+                token="test-token",
+                account_id="acc-1",
+                workspace_id="ws-1",
+                base_url="https://myapp.com",
+                manifest=manifest,
+                existing=existing,
+                config={"api_key": "new-secret", "env": "prod"},
+            )
+
+        assert result.config is not None
+        assert result.config["api_key"] == "new-secret"
+        assert result.config["env"] == "prod"
+
+    async def test_update_preserves_empty_sensitive_field(self, manager_with_fields):
+        now = datetime.now(tz=timezone.utc)
+        existing = Installation(
+            account_id="acc-1",
+            workspace_id="ws-1",
+            installed_at=now,
+            updated_at=now,
+            config={"api_key": "original-secret", "env": "staging"},
+        )
+        await manager_with_fields._store_installation(existing)
+
+        manifest = HandlerManifest(webhook_events=[], actions=[])
+
+        with patch("frameio_kit._install_manager.Client") as MockClient:
+            mock_client = AsyncMock()
+            mock_client.close = AsyncMock()
+            MockClient.return_value = mock_client
+
+            # Empty api_key should preserve existing value
+            result = await manager_with_fields.update(
+                token="test-token",
+                account_id="acc-1",
+                workspace_id="ws-1",
+                base_url="https://myapp.com",
+                manifest=manifest,
+                existing=existing,
+                config={"api_key": "", "env": "prod"},
+            )
+
+        assert result.config is not None
+        assert result.config["api_key"] == "original-secret"
+        assert result.config["env"] == "prod"
+
+    async def test_install_without_config(self, manager_with_fields):
+        manifest = HandlerManifest(webhook_events=[], actions=[])
+
+        with patch("frameio_kit._install_manager.Client") as MockClient:
+            mock_client = AsyncMock()
+            mock_client.close = AsyncMock()
+            MockClient.return_value = mock_client
+
+            result = await manager_with_fields.install(
+                token="test-token",
+                account_id="acc-1",
+                workspace_id="ws-1",
+                base_url="https://myapp.com",
+                manifest=manifest,
+            )
+
+        assert result.config is None

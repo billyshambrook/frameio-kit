@@ -118,6 +118,7 @@ These parameters are passed directly to `App(...)`:
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `install` | `bool` | `False` | Enable the self-service install page |
+| `install_fields` | `list[InstallField] \| None` | `None` | Configuration fields shown during install |
 | `name` | `str \| None` | `None` | Display name in install UI and auth pages |
 | `description` | `str` | `""` | Description shown on landing page |
 | `logo_url` | `str \| None` | `None` | Partner logo URL |
@@ -165,6 +166,116 @@ app = App(
 ```
 
 When set, only the listed accounts appear in the account dropdown and install/uninstall requests for other accounts are rejected. This is useful for internal tools that should only run within your own organization's accounts.
+
+## Custom Install Fields
+
+Collect additional configuration from workspace admins during installation — such as API keys, endpoint URLs, or environment selection.
+
+### Declaring Fields
+
+Pass a list of `InstallField` declarations to `App`:
+
+```python
+from frameio_kit import App, OAuthConfig, InstallField
+
+app = App(
+    oauth=OAuthConfig(...),
+    install=True,
+    name="My Integration",
+    install_fields=[
+        InstallField(
+            name="api_key",
+            label="API Key",
+            type="password",
+            required=True,
+            description="Your service API key",
+        ),
+        InstallField(
+            name="environment",
+            label="Environment",
+            type="select",
+            options=("production", "staging"),
+            default="production",
+        ),
+        InstallField(
+            name="endpoint_url",
+            label="Endpoint URL",
+            type="text",
+            description="Custom endpoint URL",
+        ),
+        InstallField(
+            name="notes",
+            label="Notes",
+            type="textarea",
+        ),
+    ],
+)
+```
+
+### Field Types
+
+| Type | HTML Element | Notes |
+|------|-------------|-------|
+| `text` | `<input type="text">` | Default type |
+| `password` | `<input type="password">` | Auto-sets `sensitive=True` — value encrypted at rest |
+| `select` | `<select>` | Requires `options` tuple |
+| `textarea` | `<textarea>` | Multi-line text input |
+
+### InstallField Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `name` | `str` | *required* | Machine-readable key used in the config dict |
+| `label` | `str` | *required* | Human-readable label shown in the UI |
+| `type` | `str` | `"text"` | Field type: `text`, `password`, `select`, or `textarea` |
+| `required` | `bool` | `False` | Whether the field must be filled in |
+| `description` | `str` | `""` | Help text shown below the field |
+| `options` | `tuple[str, ...]` | `()` | Choices for `select` fields |
+| `default` | `str` | `""` | Default value pre-filled in the form |
+| `sensitive` | `bool \| None` | `None` | Encrypt at rest. `None` = auto (`True` for `password`) |
+
+!!! note "Reserved Names"
+
+    Field names `account_id` and `workspace_id` are reserved and cannot be used.
+
+### Accessing Config in Handlers
+
+Use `get_install_config()` to retrieve config values within webhook and action handlers:
+
+```python
+from frameio_kit import get_install_config
+
+@app.on_webhook("file.ready")
+async def on_file_ready(event):
+    config = get_install_config()
+    api_key = config["api_key"]
+    env = config["environment"]
+    # Use the values...
+```
+
+The config dict maps field names to their string values (HTML forms always submit strings).
+
+!!! warning
+
+    `get_install_config()` raises `RuntimeError` if called outside a handler context, or if the app has no `install_fields`, or if no installation exists for the event's workspace.
+
+### Sensitive Fields
+
+Fields with `sensitive=True` (or `type="password"`, which implies it) are encrypted at rest using the same Fernet encryption as signing secrets.
+
+In the install UI:
+
+- **New install**: The field renders as a normal password input
+- **Installed state**: Shows "Configured" instead of the actual value
+- **Edit/Update**: Shows an empty password field with placeholder "(unchanged)" — submitting an empty value preserves the existing secret
+
+### Config on Updates
+
+When an admin updates an installation, config values are merged:
+
+- Non-sensitive fields are replaced with the new values
+- Empty sensitive fields preserve the existing value (standard password-field UX)
+- Non-empty sensitive fields are replaced with the new value
 
 ## Storage
 
@@ -218,11 +329,12 @@ The installation system mounts these routes:
 
 ## Security
 
-- **Secrets encrypted at rest** — Signing secrets are encrypted with Fernet (AES-128 + HMAC) before storage
+- **Secrets encrypted at rest** — Signing secrets and sensitive config values are encrypted with Fernet (AES-128 + HMAC) before storage
 - **Session encryption** — OAuth access tokens in install sessions are also encrypted
 - **Signed cookies** — Session cookies are cryptographically signed with `HttpOnly`, `Secure`, `SameSite=Lax`, and `Path=/install`
-- **Input validation** — Account and workspace IDs are validated as UUIDs before API calls
+- **Input validation** — Account and workspace IDs are validated as UUIDs; required config fields are validated before install
 - **Auto-escaping** — Jinja2 templates use `autoescape=True` to prevent XSS
+- **Config context isolation** — Install config is set in request-scoped context after signature verification, never before
 
 !!! warning "URL Inference"
 

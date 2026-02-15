@@ -81,6 +81,27 @@ Adherence to this stack is mandatory. Do not introduce new tools without a forma
    * The description should clearly explain the changes and link to any relevant issue trackers.
    * Ensure all CI checks (linting, type checking, testing) are passing before requesting a review.
 
+## **✅ Change Checklist**
+
+Every change — whether a new feature, bug fix, or refactor — must go through this checklist before being considered complete:
+
+1. **Write or update tests**
+    - Add tests for new functionality
+    - Add regression tests for bug fixes
+    - Update existing tests if behaviour changed
+2. **Run all tests**: `uv run pytest tests/ -x -q`
+3. **Run linter**: `uv run ruff check src/frameio_kit/ tests/`
+4. **Run type checker**: `uv run ty check`
+5. **Update documentation** (if applicable)
+    - Update relevant pages in `docs/usage/` for user-facing changes
+    - API reference (`docs/api_reference.md`) is auto-generated from docstrings — ensure docstrings are complete
+    - Update the Configuration Reference table in `docs/usage/installation.md` if adding new `App` parameters
+6. **Update AGENTS.md** (if applicable)
+    - Add new modules to the Module Architecture table
+    - Update module descriptions if their scope changed
+    - Add new exceptions to the Exception Hierarchy
+7. **Export new public symbols** from `__init__.py` and add to `__all__`
+
 ## **🏛️ Module Architecture**
 
 The SDK follows a modular architecture with clear separation of concerns:
@@ -99,12 +120,12 @@ The SDK follows a modular architecture with clear separation of concerns:
 | `_oauth.py` | OAuth client and token management |
 | `_encryption.py` | Token encryption |
 | `_client.py` | Frame.io API client |
-| `_context.py` | Request context management |
+| `_context.py` | Request context management (user tokens, install config) |
 | `_auth_routes.py` | OAuth authentication routes |
 | `_auth_templates.py` | Auth callback page templates |
 | `_storage.py` | Storage abstraction (MemoryStorage) |
 | `_storage_dynamodb.py` | DynamoDB storage backend |
-| `_install_models.py` | Installation data models |
+| `_install_models.py` | Installation data models (Installation, InstallField) |
 | `_install_manager.py` | Installation lifecycle management |
 | `_install_routes.py` | Install UI route handlers (HTMX) |
 | `_install_templates.py` | Install UI Jinja2 templates |

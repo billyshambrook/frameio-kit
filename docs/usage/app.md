@@ -112,6 +112,32 @@ app = App(
 
 See [Installation System - Branding](installation.md#branding) for details.
 
+### Install Fields
+
+Collect configuration from workspace admins during installation:
+
+```python
+from frameio_kit import App, OAuthConfig, InstallField, get_install_config
+
+app = App(
+    oauth=OAuthConfig(...),
+    install=True,
+    name="My Integration",
+    install_fields=[
+        InstallField(name="api_key", label="API Key", type="password", required=True),
+        InstallField(name="environment", label="Environment", type="select",
+                     options=("production", "staging"), default="production"),
+    ],
+)
+
+@app.on_webhook("file.ready")
+async def on_file_ready(event):
+    config = get_install_config()
+    api_key = config["api_key"]
+```
+
+See [Installation System - Custom Install Fields](installation.md#custom-install-fields) for details.
+
 ## Secret Resolution Precedence
 
 The framework follows this precedence order (highest to lowest):
