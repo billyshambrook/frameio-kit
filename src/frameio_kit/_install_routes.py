@@ -395,6 +395,9 @@ async def _install_execute(request: Request) -> Response:
         )
         return HTMLResponse(html, status_code=403)
 
+    # Check for existing installation early so validation can account for it
+    existing = await manager.get_installation(account_id, workspace_id)
+
     # Extract config from form fields
     install_fields = _get_install_fields(request)
     config: dict[str, str] | None = None
@@ -404,7 +407,11 @@ async def _install_execute(request: Request) -> Response:
         for field in install_fields:
             value = str(form.get(f"config_{field.name}", ""))
             if field.required and not value:
-                missing.append(field.label)
+                # On updates, allow empty sensitive fields (they preserve existing values)
+                if existing and field.is_sensitive and existing.config and field.name in existing.config:
+                    pass
+                else:
+                    missing.append(field.label)
             config[field.name] = value
         if missing:
             html = renderer.render_result_fragment(
@@ -417,9 +424,6 @@ async def _install_execute(request: Request) -> Response:
     base_url = _infer_base_url(request)
 
     try:
-        # Check for existing installation (idempotency)
-        existing = await manager.get_installation(account_id, workspace_id)
-
         if existing is None:
             # Fresh install
             installation = await manager.install(

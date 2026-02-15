@@ -244,8 +244,8 @@ _CONFIG_FIELDS_FRAGMENT = """\
            value="{{ config_values.get(field.name, field.default) }}"
            class="w-full rounded-lg border px-3 py-2 text-sm"
            style="border-color: var(--fk-border);"
-           {% if field.required %}required{% endif %}
-           {% if field.is_sensitive and config_values.get(field.name) %}placeholder="(unchanged)"{% endif %}>
+           {% if field.required and not (field.is_sensitive and field.name in sensitive_existing) %}required{% endif %}
+           {% if field.is_sensitive and field.name in sensitive_existing %}placeholder="(unchanged)"{% endif %}>
     {% endif %}
 </div>
 {% endfor %}
@@ -576,15 +576,18 @@ class TemplateRenderer:
         # Build config values dict for template rendering.
         # For sensitive fields in display context, mask the value.
         config_values: dict[str, str] = {}
+        sensitive_existing: set[str] = set()
         if installation and installation.config:
             for field in install_fields:
-                val = installation.config.get(field.name, "")
+                if field.name not in installation.config:
+                    continue
                 if field.is_sensitive:
                     # In editable forms, leave value empty (placeholder shows "(unchanged)").
                     # In display context, _CONFIG_DISPLAY_FRAGMENT shows "Configured".
                     config_values[field.name] = ""
+                    sensitive_existing.add(field.name)
                 else:
-                    config_values[field.name] = val
+                    config_values[field.name] = installation.config[field.name]
 
         if installation is None:
             template = self._env.from_string(_STATUS_NOT_INSTALLED)
@@ -594,6 +597,7 @@ class TemplateRenderer:
                 workspace_id=workspace_id,
                 install_fields=install_fields,
                 config_values={f.name: f.default for f in install_fields},
+                sensitive_existing=set(),
                 install_path=install_path,
             )
 
@@ -606,6 +610,7 @@ class TemplateRenderer:
                 workspace_id=workspace_id,
                 install_fields=install_fields,
                 config_values=config_values,
+                sensitive_existing=sensitive_existing,
                 install_path=install_path,
             )
 
@@ -616,6 +621,7 @@ class TemplateRenderer:
             workspace_id=workspace_id,
             install_fields=install_fields,
             config_values=config_values,
+            sensitive_existing=sensitive_existing,
             install_path=install_path,
         )
 

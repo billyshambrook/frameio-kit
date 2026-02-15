@@ -59,6 +59,7 @@ dev = [
     "mkdocstrings-python>=1.18.2",
     "ty>=0.0.15",
     "fastapi>=0.115.0",
+    "frameio-kit[dynamodb,install]",
     "prek>=0.3.0",
     "pytest>=8.4.2",
     "pytest-asyncio>=1.2.0",

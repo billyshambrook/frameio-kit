@@ -341,20 +341,83 @@ class TestInstallFieldsInRoutes:
         assert app_with_fields._install_fields[0].name == "api_key"
         assert app_with_fields._install_fields[1].name == "environment"
 
-    def test_required_field_validation_returns_400(self, client_with_fields):
-        """POST /install/execute with missing required field returns 400."""
-        # We need a session for this to work, so without one we get a redirect.
-        # Test the validation logic through the App fixture instead.
-        response = client_with_fields.post(
-            "/install/execute",
-            data={
-                "account_id": "12345678-1234-1234-1234-123456789abc",
-                "workspace_id": "12345678-1234-1234-1234-123456789abc",
-                "config_environment": "production",
-                # config_api_key intentionally missing
-            },
-            headers={"HX-Request": "true"},
+    @pytest.fixture
+    def _session_cookie(self, app_with_fields):
+        """Create a valid signed session cookie and store session data."""
+        import base64
+
+        manager = app_with_fields._install_manager
+        encryption = manager.encryption
+
+        state_serializer = app_with_fields._oauth_manager.state_serializer
+
+        # Encrypt a fake access token and store session data
+        encrypted_token = encryption.encrypt(b"fake-access-token")
+        session_key = "test-session-key"
+        import asyncio
+
+        asyncio.get_event_loop().run_until_complete(
+            manager.storage.put(
+                f"install_session:{session_key}",
+                {"encrypted_access_token": base64.b64encode(encrypted_token).decode("utf-8")},
+                ttl=1800,
+            )
         )
-        # Without session, we get redirected before validation
-        assert response.status_code == 200
-        assert "HX-Redirect" in response.headers
+
+        # Create signed cookie
+        cookie_value = state_serializer.dumps({"session_key": session_key})
+        return cookie_value
+
+    def test_required_field_validation_returns_400(self, app_with_fields, _session_cookie):
+        """POST /install/execute with missing required field returns 400."""
+        with TestClient(app_with_fields) as client:
+            response = client.post(
+                "/install/execute",
+                data={
+                    "account_id": "12345678-1234-1234-1234-123456789abc",
+                    "workspace_id": "12345678-1234-1234-1234-123456789abc",
+                    "config_environment": "production",
+                    # config_api_key intentionally missing
+                },
+                cookies={"install_session": _session_cookie},
+                headers={"HX-Request": "true"},
+            )
+            assert response.status_code == 400
+            assert "Missing Required Fields" in response.text
+            assert "API Key" in response.text
+
+    def test_required_sensitive_field_allowed_empty_on_update(self, app_with_fields, _session_cookie):
+        """Required sensitive fields can be empty on update when they already have stored values."""
+        import asyncio
+
+        manager = app_with_fields._install_manager
+
+        # Pre-store an installation with an existing config (simulates a previous install)
+        from frameio_kit._install_models import Installation
+        from datetime import datetime, timezone
+
+        installation = Installation(
+            account_id="12345678-1234-1234-1234-123456789abc",
+            workspace_id="12345678-1234-1234-1234-123456789abc",
+            installed_at=datetime.now(tz=timezone.utc),
+            updated_at=datetime.now(tz=timezone.utc),
+            webhook=None,
+            actions=[],
+            config={"api_key": "existing-secret", "environment": "production"},
+        )
+        asyncio.get_event_loop().run_until_complete(manager._store_installation(installation))
+
+        with TestClient(app_with_fields) as client:
+            response = client.post(
+                "/install/execute",
+                data={
+                    "account_id": "12345678-1234-1234-1234-123456789abc",
+                    "workspace_id": "12345678-1234-1234-1234-123456789abc",
+                    "config_environment": "staging",
+                    # config_api_key intentionally empty — should be allowed on update
+                },
+                cookies={"install_session": _session_cookie},
+                headers={"HX-Request": "true"},
+            )
+            # Should NOT get 400 for missing required field
+            assert response.status_code != 400

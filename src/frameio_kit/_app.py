@@ -649,7 +649,7 @@ class App:
             wrapped = functools.partial(mw.__call__, next=wrapped)
         return wrapped
 
-    async def _check_user_auth(self, event: ActionEvent, request: Request) -> Form | None:
+    async def _check_user_auth(self, event: ActionEvent, request: Request) -> tuple[Form | None, object | None]:
         """Check if user is authenticated and return login form if not.
 
         Args:
@@ -657,7 +657,9 @@ class App:
             request: The incoming request (used to infer login URL if needed).
 
         Returns:
-            Login Form if user needs to authenticate, None if authenticated.
+            A tuple of (login_form, context_token). login_form is a Form if
+            user needs to authenticate, None if authenticated. context_token
+            is the contextvars Token for resetting _user_token_context.
 
         Raises:
             ConfigurationError: If OAuth not configured but auth required.
@@ -669,11 +671,11 @@ class App:
         user_token_data = await self._oauth_manager.token_manager.get_token(event.user_id)
         if not user_token_data:
             # User not authenticated - return login form
-            return self._create_login_form(event, request)
+            return self._create_login_form(event, request), None
 
         # Set user token in request context (not on event to prevent accidental logging)
-        _user_token_context.set(user_token_data.access_token)
-        return None
+        token = _user_token_context.set(user_token_data.access_token)
+        return None, token
 
     async def _resolve_secret(self, handler_reg: _HandlerRegistration, event: WebhookEvent | ActionEvent) -> str:
         """Resolve the secret for signature verification.
@@ -733,12 +735,14 @@ class App:
             return Response("Invalid signature.", status_code=401)
 
         # Set install config in context if available
+        config_ctx_token = None
         if self._install_fields and self._install_manager:
             installation = await self._install_manager.get_installation(event.account_id, event.workspace_id)
             if installation and installation.config:
-                _install_config_context.set(installation.config)
+                config_ctx_token = _install_config_context.set(installation.config)
 
         # Process event
+        user_ctx_token = None
         try:
             # Check user authentication if required
             if handler_reg.require_user_auth:
@@ -747,7 +751,7 @@ class App:
                     return Response("User authentication only supported for action events.", status_code=400)
 
                 # Check if user is authenticated
-                login_form = await self._check_user_auth(event, request)
+                login_form, user_ctx_token = await self._check_user_auth(event, request)
                 if login_form:
                     return JSONResponse(login_form.model_dump(exclude_none=True))
 
@@ -768,6 +772,11 @@ class App:
         except Exception:
             logger.exception("Error processing event '%s'", event_type)
             return Response("Internal Server Error", status_code=500)
+        finally:
+            if config_ctx_token is not None:
+                _install_config_context.reset(config_ctx_token)
+            if user_ctx_token is not None:
+                _user_token_context.reset(user_ctx_token)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send):
         """ASGI call interface to delegate to the underlying Starlette app."""

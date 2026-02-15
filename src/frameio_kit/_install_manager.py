@@ -148,7 +148,10 @@ class InstallationManager:
             decrypted_config = dict(installation.config)
             for key in self._sensitive_field_names:
                 if key in decrypted_config:
-                    decrypted_config[key] = self._decrypt_secret(decrypted_config[key])
+                    try:
+                        decrypted_config[key] = self._decrypt_secret(decrypted_config[key])
+                    except Exception:
+                        logger.warning("Failed to decrypt config key '%s'; using raw value", key)
             installation.config = decrypted_config
 
         return installation
