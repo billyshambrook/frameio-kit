@@ -438,7 +438,9 @@ install = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "aioboto3" },
     { name = "fastapi" },
+    { name = "jinja2" },
     { name = "mkdocs" },
     { name = "mkdocs-material" },
     { name = "mkdocstrings-python" },
@@ -446,6 +448,7 @@ dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-xdist" },
+    { name = "python-multipart" },
     { name = "ruff" },
     { name = "ty" },
     { name = "uvicorn" },
@@ -468,7 +471,9 @@ provides-extras = ["dynamodb", "install"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "aioboto3", specifier = ">=13.0.0" },
     { name = "fastapi", specifier = ">=0.115.0" },
+    { name = "jinja2", specifier = ">=3.1.0" },
     { name = "mkdocs", specifier = ">=1.6.1" },
     { name = "mkdocs-material", specifier = ">=9.6.21" },
     { name = "mkdocstrings-python", specifier = ">=1.18.2" },
@@ -476,6 +481,7 @@ dev = [
     { name = "pytest", specifier = ">=8.4.2" },
     { name = "pytest-asyncio", specifier = ">=1.2.0" },
     { name = "pytest-xdist", specifier = ">=3.8.0" },
+    { name = "python-multipart", specifier = ">=0.0.18" },
     { name = "ruff", specifier = ">=0.6.4" },
     { name = "ty", specifier = ">=0.0.15" },
     { name = "uvicorn", specifier = ">=0.38.0" },

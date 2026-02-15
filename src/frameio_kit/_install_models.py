@@ -4,9 +4,49 @@ This module defines the models used to track installations, handler manifests,
 and installation diffs for the self-service installation UI.
 """
 
+from dataclasses import dataclass
 from datetime import datetime
 
 from pydantic import BaseModel
+
+_VALID_FIELD_TYPES = frozenset({"text", "password", "select", "textarea"})
+_RESERVED_FIELD_NAMES = frozenset({"account_id", "workspace_id"})
+
+
+@dataclass(frozen=True)
+class InstallField:
+    """Declaration of a configuration field shown during app installation.
+
+    Partners use this to collect additional configuration from workspace admins
+    (e.g. API keys, endpoint URLs, environment selection).
+
+    Attributes:
+        name: Machine-readable field name used as the config dict key.
+        label: Human-readable label shown in the install UI.
+        type: Field type — ``text``, ``password``, ``select``, or ``textarea``.
+        required: Whether the field must be filled in.
+        description: Help text shown below the field.
+        options: Choices for ``select`` fields.
+        default: Default value pre-filled in the form.
+        sensitive: Whether the value should be encrypted at rest.
+            Defaults to ``True`` for ``password`` fields when ``None``.
+    """
+
+    name: str
+    label: str
+    type: str = "text"
+    required: bool = False
+    description: str = ""
+    options: tuple[str, ...] = ()
+    default: str = ""
+    sensitive: bool | None = None
+
+    @property
+    def is_sensitive(self) -> bool:
+        """Whether this field's value should be encrypted at rest."""
+        if self.sensitive is not None:
+            return self.sensitive
+        return self.type == "password"
 
 
 class WebhookRecord(BaseModel):
@@ -63,6 +103,7 @@ class Installation(BaseModel):
     updated_at: datetime
     webhook: WebhookRecord | None = None
     actions: list[ActionRecord] = []
+    config: dict[str, str] | None = None
 
 
 class ActionManifestEntry(BaseModel):

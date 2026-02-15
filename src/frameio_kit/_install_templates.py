@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ._app import _BrandingConfig
-    from ._install_models import HandlerManifest, Installation, InstallationDiff
+    from ._install_models import HandlerManifest, InstallField, Installation, InstallationDiff
 
 logger = logging.getLogger(__name__)
 
@@ -219,7 +219,51 @@ _WORKSPACES_FRAGMENT = """\
 </div>
 """
 
-_STATUS_NOT_INSTALLED = """\
+_CONFIG_FIELDS_FRAGMENT = """\
+{% for field in install_fields %}
+<div class="mb-3">
+    <label for="config_{{ field.name }}" class="block text-sm font-medium mb-1">{{ field.label }}{% if field.required %} <span class="text-red-500">*</span>{% endif %}</label>
+    {% if field.description %}
+    <p class="text-xs mb-1" style="color: var(--fk-text-muted);">{{ field.description }}</p>
+    {% endif %}
+    {% if field.type == "select" %}
+    <select id="config_{{ field.name }}" name="config_{{ field.name }}"
+            class="w-full rounded-lg border px-3 py-2 text-sm"
+            style="border-color: var(--fk-border);"{% if field.required %} required{% endif %}>
+        {% for option in field.options %}
+        <option value="{{ option }}"{% if config_values.get(field.name, field.default) == option %} selected{% endif %}>{{ option }}</option>
+        {% endfor %}
+    </select>
+    {% elif field.type == "textarea" %}
+    <textarea id="config_{{ field.name }}" name="config_{{ field.name }}"
+              class="w-full rounded-lg border px-3 py-2 text-sm"
+              style="border-color: var(--fk-border);"
+              rows="3"
+              {% if field.required and not (field.is_sensitive and field.name in sensitive_existing) %}required{% endif %}
+              {% if field.is_sensitive and field.name in sensitive_existing %}placeholder="(unchanged)"{% endif %}>{{ config_values.get(field.name, field.default) }}</textarea>
+    {% else %}
+    <input type="{{ field.type }}" id="config_{{ field.name }}" name="config_{{ field.name }}"
+           value="{{ config_values.get(field.name, field.default) }}"
+           class="w-full rounded-lg border px-3 py-2 text-sm"
+           style="border-color: var(--fk-border);"
+           {% if field.required and not (field.is_sensitive and field.name in sensitive_existing) %}required{% endif %}
+           {% if field.is_sensitive and field.name in sensitive_existing %}placeholder="(unchanged)"{% endif %}>
+    {% endif %}
+</div>
+{% endfor %}
+"""
+
+_CONFIG_DISPLAY_FRAGMENT = """\
+{% for field in install_fields %}
+<div class="mb-2">
+    <span class="text-xs font-semibold uppercase tracking-wide" style="color: var(--fk-text-muted);">{{ field.label }}</span>
+    <p class="text-sm">{% if field.is_sensitive %}Configured{% else %}{{ config_values.get(field.name, "") }}{% endif %}</p>
+</div>
+{% endfor %}
+"""
+
+_STATUS_NOT_INSTALLED = (
+    """\
 <section class="rounded-lg border p-4" style="border-color: var(--fk-border);"
          hx-trigger="refreshStatus from:body" hx-get="{{ install_path }}/status"
          hx-include="[name='account_id'], [name='workspace_id']"
@@ -243,6 +287,14 @@ _STATUS_NOT_INSTALLED = """\
     <form hx-post="{{ install_path }}/execute" hx-target="#result-panel" hx-indicator="#action-loading" hx-swap="innerHTML">
         <input type="hidden" name="account_id" value="{{ account_id }}">
         <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
+        {% if install_fields %}
+        <div class="mb-4">
+            <h3 class="text-xs font-semibold uppercase tracking-wide mb-2" style="color: var(--fk-text-muted);">Configuration</h3>
+            """
+    + _CONFIG_FIELDS_FRAGMENT
+    + """
+        </div>
+        {% endif %}
         <div class="flex items-center gap-2">
             <button type="submit" class="fk-btn-primary htmx-hide-on-request">Install App</button>
             <div id="action-loading" class="htmx-indicator">
@@ -256,8 +308,10 @@ _STATUS_NOT_INSTALLED = """\
     </form>
 </section>
 """
+)
 
-_STATUS_INSTALLED = """\
+_STATUS_INSTALLED = (
+    """\
 <section class="rounded-lg border p-4" style="border-color: var(--fk-border);"
          hx-trigger="refreshStatus from:body" hx-get="{{ install_path }}/status"
          hx-include="[name='account_id'], [name='workspace_id']"
@@ -281,6 +335,36 @@ _STATUS_INSTALLED = """\
         {% endfor %}
     </div>
     {% endif %}
+    {% if install_fields %}
+    <div class="mb-4">
+        <h3 class="text-xs font-semibold uppercase tracking-wide mb-2" style="color: var(--fk-text-muted);">Configuration</h3>
+        """
+    + _CONFIG_DISPLAY_FRAGMENT
+    + """
+    </div>
+    <form hx-post="{{ install_path }}/execute" hx-target="#result-panel" hx-indicator="#save-config-loading" hx-swap="innerHTML" class="mb-4">
+        <input type="hidden" name="account_id" value="{{ account_id }}">
+        <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
+        <details class="rounded-lg border p-3" style="border-color: var(--fk-border);">
+            <summary class="text-sm font-medium cursor-pointer">Edit Configuration</summary>
+            <div class="mt-3">
+                """
+    + _CONFIG_FIELDS_FRAGMENT
+    + """
+                <div class="flex items-center gap-2 mt-2">
+                    <button type="submit" class="fk-btn-primary htmx-hide-on-request">Save Configuration</button>
+                    <div id="save-config-loading" class="htmx-indicator">
+                        <svg class="animate-spin h-4 w-4" style="color: var(--fk-primary);" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                        </svg>
+                        <span class="text-sm" style="color: var(--fk-text-muted);">Saving...</span>
+                    </div>
+                </div>
+            </div>
+        </details>
+    </form>
+    {% endif %}
     <div class="flex justify-end">
         <form hx-post="{{ install_path }}/uninstall" hx-target="#result-panel" hx-indicator="#uninstall-loading" hx-swap="innerHTML">
             <input type="hidden" name="account_id" value="{{ account_id }}">
@@ -299,8 +383,10 @@ _STATUS_INSTALLED = """\
     </div>
 </section>
 """
+)
 
-_STATUS_UPDATE_AVAILABLE = """\
+_STATUS_UPDATE_AVAILABLE = (
+    """\
 <section class="rounded-lg border p-4" style="border-color: var(--fk-border);"
          hx-trigger="refreshStatus from:body" hx-get="{{ install_path }}/status"
          hx-include="[name='account_id'], [name='workspace_id']"
@@ -330,10 +416,20 @@ _STATUS_UPDATE_AVAILABLE = """\
         {% endfor %}
     </div>
 
+    {% if install_fields %}
+    <div class="mb-4">
+        <h3 class="text-xs font-semibold uppercase tracking-wide mb-2" style="color: var(--fk-text-muted);">Configuration</h3>
+    </div>
+    {% endif %}
     <div class="flex items-center justify-between">
         <form hx-post="{{ install_path }}/execute" hx-target="#result-panel" hx-indicator="#update-loading" hx-swap="innerHTML">
             <input type="hidden" name="account_id" value="{{ account_id }}">
             <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
+            {% if install_fields %}
+            """
+    + _CONFIG_FIELDS_FRAGMENT
+    + """
+            {% endif %}
             <div class="flex items-center gap-2">
                 <button type="submit" class="fk-btn-primary htmx-hide-on-request">Update App</button>
                 <div id="update-loading" class="htmx-indicator">
@@ -362,6 +458,7 @@ _STATUS_UPDATE_AVAILABLE = """\
     </div>
 </section>
 """
+)
 
 _RESULT_SUCCESS = """\
 <section class="rounded-lg border p-4" style="border-color: var(--fk-success); background-color: #f0fdf4;">
@@ -461,6 +558,7 @@ class TemplateRenderer:
         installation: Installation | None,
         manifest: HandlerManifest,
         diff: InstallationDiff | None = None,
+        install_fields: tuple[InstallField, ...] = (),
         install_path: str = "/install",
     ) -> str:
         """Render the status panel HTMX fragment.
@@ -471,17 +569,37 @@ class TemplateRenderer:
             installation: Existing installation record (or None).
             manifest: Current handler manifest.
             diff: Installation diff (if update available).
+            install_fields: Install field declarations for config form.
             install_path: Mount-prefix-aware base path for install routes.
 
         Returns:
             HTML fragment for the status panel.
         """
+        # Build config values dict for template rendering.
+        # For sensitive fields in display context, mask the value.
+        config_values: dict[str, str] = {}
+        sensitive_existing: set[str] = set()
+        if installation and installation.config:
+            for field in install_fields:
+                if field.name not in installation.config:
+                    continue
+                if field.is_sensitive:
+                    # In editable forms, leave value empty (placeholder shows "(unchanged)").
+                    # In display context, _CONFIG_DISPLAY_FRAGMENT shows "Configured".
+                    config_values[field.name] = ""
+                    sensitive_existing.add(field.name)
+                else:
+                    config_values[field.name] = installation.config[field.name]
+
         if installation is None:
             template = self._env.from_string(_STATUS_NOT_INSTALLED)
             return template.render(
                 manifest=manifest,
                 account_id=account_id,
                 workspace_id=workspace_id,
+                install_fields=install_fields,
+                config_values={f.name: f.default for f in install_fields},
+                sensitive_existing=set(),
                 install_path=install_path,
             )
 
@@ -492,6 +610,9 @@ class TemplateRenderer:
                 diff=diff,
                 account_id=account_id,
                 workspace_id=workspace_id,
+                install_fields=install_fields,
+                config_values=config_values,
+                sensitive_existing=sensitive_existing,
                 install_path=install_path,
             )
 
@@ -500,6 +621,9 @@ class TemplateRenderer:
             installation=installation,
             account_id=account_id,
             workspace_id=workspace_id,
+            install_fields=install_fields,
+            config_values=config_values,
+            sensitive_existing=sensitive_existing,
             install_path=install_path,
         )
 

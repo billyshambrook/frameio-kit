@@ -17,6 +17,7 @@ from ._install_models import (
     ActionManifestEntry,
     ActionRecord,
     HandlerManifest,
+    InstallField,
     Installation,
     InstallationDiff,
     WebhookRecord,
@@ -69,12 +70,15 @@ class InstallationManager:
         app_name: str,
         base_url: str | None = None,
         allowed_accounts: list[str] | None = None,
+        install_fields: tuple[InstallField, ...] = (),
     ) -> None:
         self.storage = storage
         self.encryption = encryption
         self._app_name = app_name
         self._base_url = base_url
         self._allowed_accounts: set[str] | None = set(allowed_accounts) if allowed_accounts is not None else None
+        self._install_fields = install_fields
+        self._sensitive_field_names: frozenset[str] = frozenset(f.name for f in install_fields if f.is_sensitive)
 
     def is_account_allowed(self, account_id: str) -> bool:
         """Check whether an account is permitted to install this app.
@@ -139,6 +143,17 @@ class InstallationManager:
             decrypted_actions.append(action.model_copy(update={"secret": self._decrypt_secret(action.secret)}))
         installation.actions = decrypted_actions
 
+        # Decrypt sensitive config values
+        if installation.config and self._sensitive_field_names:
+            decrypted_config = dict(installation.config)
+            for key in self._sensitive_field_names:
+                if key in decrypted_config:
+                    try:
+                        decrypted_config[key] = self._decrypt_secret(decrypted_config[key])
+                    except Exception:
+                        logger.warning("Failed to decrypt config key '%s'; using raw value", key)
+            installation.config = decrypted_config
+
         return installation
 
     async def install(
@@ -148,6 +163,7 @@ class InstallationManager:
         workspace_id: str,
         base_url: str,
         manifest: HandlerManifest,
+        config: dict[str, str] | None = None,
     ) -> Installation:
         """Create a new installation for a workspace.
 
@@ -221,6 +237,7 @@ class InstallationManager:
                 updated_at=now,
                 webhook=webhook_record,
                 actions=action_records,
+                config=config,
             )
 
             await self._store_installation(installation)
@@ -237,6 +254,7 @@ class InstallationManager:
         base_url: str,
         manifest: HandlerManifest,
         existing: Installation,
+        config: dict[str, str] | None = None,
     ) -> Installation:
         """Update an existing installation to match the current manifest.
 
@@ -352,11 +370,24 @@ class InstallationManager:
                 if event_type not in manifest_actions_by_event:
                     await client.experimental.custom_actions.actions_delete(account_id, existing_action.action_id)
 
+            # Merge config: start from existing, overlay new values,
+            # but preserve existing sensitive values when the new value is empty
+            # (standard UX for password fields that show as blank).
+            merged_config: dict[str, str] | None = None
+            if config is not None or existing.config is not None:
+                merged_config = dict(existing.config or {})
+                if config is not None:
+                    for key, value in config.items():
+                        if not value and key in self._sensitive_field_names and key in merged_config:
+                            continue  # preserve existing sensitive value
+                        merged_config[key] = value
+
             installation = existing.model_copy(
                 update={
                     "updated_at": now,
                     "webhook": webhook_record,
                     "actions": action_records,
+                    "config": merged_config,
                 },
             )
 
@@ -476,8 +507,16 @@ class InstallationManager:
         for action in installation.actions:
             encrypted_actions.append(action.model_copy(update={"secret": self._encrypt_secret(action.secret)}))
 
+        # Encrypt sensitive config values
+        encrypted_config = installation.config
+        if installation.config and self._sensitive_field_names:
+            encrypted_config = dict(installation.config)
+            for key in self._sensitive_field_names:
+                if key in encrypted_config:
+                    encrypted_config[key] = self._encrypt_secret(encrypted_config[key])
+
         encrypted_installation = installation.model_copy(
-            update={"webhook": encrypted_webhook, "actions": encrypted_actions}
+            update={"webhook": encrypted_webhook, "actions": encrypted_actions, "config": encrypted_config}
         )
 
         key = _storage_key(installation.account_id, installation.workspace_id)

@@ -43,7 +43,7 @@ from starlette.types import Receive, Scope, Send
 
 from ._auth_routes import create_auth_routes
 from ._client import Client
-from ._context import _user_token_context
+from ._context import _install_config_context, _user_token_context
 from ._events import ActionEvent, AnyEvent, WebhookEvent
 from ._exceptions import (
     ConfigurationError,
@@ -129,6 +129,7 @@ class App:
         encryption_key: str | None = None,
         # Install system
         install: bool = False,
+        install_fields: list | None = None,
         install_session_ttl: int = 1800,
         base_url: str | None = None,
         allowed_accounts: list[str] | None = None,
@@ -161,6 +162,8 @@ class App:
                 uses FRAMEIO_AUTH_ENCRYPTION_KEY env var or generates ephemeral key.
             install: Whether to enable the self-service ``/install`` page.
                 Requires ``oauth`` to also be configured.
+            install_fields: Optional list of ``InstallField`` declarations for
+                collecting configuration from workspace admins during install.
             install_session_ttl: Install session TTL in seconds. Defaults to
                 30 minutes (1800).
             base_url: Explicit public URL for the app. If not set, the URL is
@@ -186,6 +189,7 @@ class App:
         self._storage = storage
         self._encryption_key = encryption_key
         self._install_enabled = install
+        self._install_fields = self._validate_install_fields(install_fields or []) if install else ()
         self._install_session_ttl = install_session_ttl
         self._base_url = base_url
         self._allowed_accounts = allowed_accounts
@@ -238,6 +242,7 @@ class App:
                 app_name=self._branding.name,
                 base_url=self._api_url,
                 allowed_accounts=self._allowed_accounts,
+                install_fields=self._install_fields,
             )
             self._template_renderer = TemplateRenderer(branding=self._branding)
 
@@ -306,6 +311,47 @@ class App:
         if not self._oauth_manager:
             raise RuntimeError("Cannot access token manager. OAuth not configured in App initialization.")
         return self._oauth_manager.token_manager
+
+    @staticmethod
+    def _validate_install_fields(fields: list) -> tuple:
+        """Validate and freeze the install_fields list.
+
+        Returns:
+            Tuple of validated InstallField instances.
+
+        Raises:
+            ConfigurationError: If validation fails.
+        """
+        from ._install_models import InstallField, _RESERVED_FIELD_NAMES, _VALID_FIELD_TYPES
+
+        if not fields:
+            return ()
+
+        result: list[InstallField] = []
+        seen_names: set[str] = set()
+        for f in fields:
+            if not isinstance(f, InstallField):
+                raise ConfigurationError(f"install_fields must contain InstallField instances, got {type(f).__name__}")
+            if f.name in seen_names:
+                raise ConfigurationError(f"Duplicate install field name: '{f.name}'")
+            if f.name in _RESERVED_FIELD_NAMES:
+                raise ConfigurationError(f"Reserved install field name: '{f.name}'")
+            if f.type not in _VALID_FIELD_TYPES:
+                raise ConfigurationError(
+                    f"Invalid install field type '{f.type}' for field '{f.name}'. "
+                    f"Must be one of: {', '.join(sorted(_VALID_FIELD_TYPES))}"
+                )
+            if f.type == "select":
+                if not f.options:
+                    raise ConfigurationError(f"Select field '{f.name}' must have options")
+                if f.default and f.default not in f.options:
+                    raise ConfigurationError(
+                        f"Invalid default '{f.default}' for select field '{f.name}'. "
+                        f"Must be one of: {', '.join(f.options)}"
+                    )
+            seen_names.add(f.name)
+            result.append(f)
+        return tuple(result)
 
     def validate_configuration(self) -> list[str]:
         """Check configuration is valid before accepting requests.
@@ -554,6 +600,7 @@ class App:
             starlette_app.state.install_session_ttl = self._install_session_ttl
             starlette_app.state.base_url = self._base_url
             starlette_app.state.template_renderer = self._template_renderer
+            starlette_app.state.install_fields = self._install_fields
             # Store references so the manifest can be built lazily (handlers
             # are registered via decorators after __init__ completes).
             starlette_app.state._webhook_handlers = self._webhook_handlers
@@ -608,7 +655,7 @@ class App:
             wrapped = functools.partial(mw.__call__, next=wrapped)
         return wrapped
 
-    async def _check_user_auth(self, event: ActionEvent, request: Request) -> Form | None:
+    async def _check_user_auth(self, event: ActionEvent, request: Request) -> tuple[Form | None, object | None]:
         """Check if user is authenticated and return login form if not.
 
         Args:
@@ -616,7 +663,9 @@ class App:
             request: The incoming request (used to infer login URL if needed).
 
         Returns:
-            Login Form if user needs to authenticate, None if authenticated.
+            A tuple of (login_form, context_token). login_form is a Form if
+            user needs to authenticate, None if authenticated. context_token
+            is the contextvars Token for resetting _user_token_context.
 
         Raises:
             ConfigurationError: If OAuth not configured but auth required.
@@ -628,11 +677,11 @@ class App:
         user_token_data = await self._oauth_manager.token_manager.get_token(event.user_id)
         if not user_token_data:
             # User not authenticated - return login form
-            return self._create_login_form(event, request)
+            return self._create_login_form(event, request), None
 
         # Set user token in request context (not on event to prevent accidental logging)
-        _user_token_context.set(user_token_data.access_token)
-        return None
+        token = _user_token_context.set(user_token_data.access_token)
+        return None, token
 
     async def _resolve_secret(self, handler_reg: _HandlerRegistration, event: WebhookEvent | ActionEvent) -> str:
         """Resolve the secret for signature verification.
@@ -691,7 +740,15 @@ class App:
         except SignatureVerificationError:
             return Response("Invalid signature.", status_code=401)
 
+        # Set install config in context if available
+        config_ctx_token = None
+        if self._install_fields and self._install_manager:
+            installation = await self._install_manager.get_installation(event.account_id, event.workspace_id)
+            if installation and installation.config is not None:
+                config_ctx_token = _install_config_context.set(installation.config)
+
         # Process event
+        user_ctx_token = None
         try:
             # Check user authentication if required
             if handler_reg.require_user_auth:
@@ -700,7 +757,7 @@ class App:
                     return Response("User authentication only supported for action events.", status_code=400)
 
                 # Check if user is authenticated
-                login_form = await self._check_user_auth(event, request)
+                login_form, user_ctx_token = await self._check_user_auth(event, request)
                 if login_form:
                     return JSONResponse(login_form.model_dump(exclude_none=True))
 
@@ -721,6 +778,11 @@ class App:
         except Exception:
             logger.exception("Error processing event '%s'", event_type)
             return Response("Internal Server Error", status_code=500)
+        finally:
+            if config_ctx_token is not None:
+                _install_config_context.reset(config_ctx_token)
+            if user_ctx_token is not None:
+                _user_token_context.reset(user_ctx_token)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send):
         """ASGI call interface to delegate to the underlying Starlette app."""

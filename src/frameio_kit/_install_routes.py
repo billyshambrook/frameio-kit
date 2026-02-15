@@ -16,7 +16,7 @@ from starlette.routing import Route
 import httpx
 
 from ._install_manager import InstallationManager, validate_uuid
-from ._install_models import HandlerManifest
+from ._install_models import HandlerManifest, InstallField
 from ._oauth import _extract_mount_prefix
 
 logger = logging.getLogger(__name__)
@@ -88,6 +88,11 @@ def _is_secure(request: Request) -> bool:
 def _is_htmx(request: Request) -> bool:
     """Check if the request is an HTMX partial request."""
     return request.headers.get("HX-Request") == "true"
+
+
+def _get_install_fields(request: Request) -> tuple[InstallField, ...]:
+    """Get the install fields from app state, defaulting to empty tuple."""
+    return getattr(request.app.state, "install_fields", ())
 
 
 def _get_manifest(request: Request) -> HandlerManifest:
@@ -350,6 +355,7 @@ async def _install_status(request: Request) -> Response:
         installation=installation,
         manifest=manifest,
         diff=diff,
+        install_fields=_get_install_fields(request),
         install_path=_install_path(request),
     )
     return HTMLResponse(html)
@@ -389,12 +395,35 @@ async def _install_execute(request: Request) -> Response:
         )
         return HTMLResponse(html, status_code=403)
 
+    # Check for existing installation early so validation can account for it
+    existing = await manager.get_installation(account_id, workspace_id)
+
+    # Extract config from form fields
+    install_fields = _get_install_fields(request)
+    config: dict[str, str] | None = None
+    if install_fields:
+        config = {}
+        missing: list[str] = []
+        for field in install_fields:
+            value = str(form.get(f"config_{field.name}", ""))
+            if field.required and not value:
+                # On updates, allow empty sensitive fields (they preserve existing values)
+                if existing and field.is_sensitive and existing.config and field.name in existing.config:
+                    pass
+                else:
+                    missing.append(field.label)
+            config[field.name] = value
+        if missing:
+            html = renderer.render_result_fragment(
+                success=False,
+                title="Missing Required Fields",
+                error=f"Please fill in: {', '.join(missing)}",
+            )
+            return HTMLResponse(html, status_code=400)
+
     base_url = _infer_base_url(request)
 
     try:
-        # Check for existing installation (idempotency)
-        existing = await manager.get_installation(account_id, workspace_id)
-
         if existing is None:
             # Fresh install
             installation = await manager.install(
@@ -403,6 +432,7 @@ async def _install_execute(request: Request) -> Response:
                 workspace_id=workspace_id,
                 base_url=base_url,
                 manifest=manifest,
+                config=config,
             )
             webhook_count = 1 if installation.webhook else 0
             event_count = len(installation.webhook.events) if installation.webhook else 0
@@ -424,6 +454,7 @@ async def _install_execute(request: Request) -> Response:
                 base_url=base_url,
                 manifest=manifest,
                 existing=existing,
+                config=config,
             )
             html = renderer.render_result_fragment(
                 success=True,
