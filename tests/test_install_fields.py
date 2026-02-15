@@ -94,7 +94,7 @@ class TestInstallationWithConfig:
 
 class TestGetInstallConfig:
     def test_raises_outside_context(self):
-        with pytest.raises(RuntimeError, match="requires install_fields"):
+        with pytest.raises(RuntimeError, match="requires install_fields.*stored install config"):
             get_install_config()
 
     def test_returns_value_when_set(self):
@@ -154,6 +154,11 @@ class TestAppInstallFieldsValidation:
     def test_select_without_options_raises(self, oauth_config):
         fields = [InstallField(name="env", label="Env", type="select")]
         with pytest.raises(ConfigurationError, match="must have options"):
+            App(oauth=oauth_config, install=True, install_fields=fields)
+
+    def test_select_invalid_default_raises(self, oauth_config):
+        fields = [InstallField(name="env", label="Env", type="select", options=("prod", "staging"), default="dev")]
+        with pytest.raises(ConfigurationError, match="Invalid default 'dev'.*Must be one of: prod, staging"):
             App(oauth=oauth_config, install=True, install_fields=fields)
 
     def test_install_fields_stored_as_tuple(self, oauth_config):

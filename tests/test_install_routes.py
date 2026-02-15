@@ -421,3 +421,4 @@ class TestInstallFieldsInRoutes:
             )
             # Should NOT get 400 for missing required field
             assert response.status_code != 400
+            assert "Missing Required Fields" not in response.text

@@ -341,8 +341,14 @@ class App:
                     f"Invalid install field type '{f.type}' for field '{f.name}'. "
                     f"Must be one of: {', '.join(sorted(_VALID_FIELD_TYPES))}"
                 )
-            if f.type == "select" and not f.options:
-                raise ConfigurationError(f"Select field '{f.name}' must have options")
+            if f.type == "select":
+                if not f.options:
+                    raise ConfigurationError(f"Select field '{f.name}' must have options")
+                if f.default and f.default not in f.options:
+                    raise ConfigurationError(
+                        f"Invalid default '{f.default}' for select field '{f.name}'. "
+                        f"Must be one of: {', '.join(f.options)}"
+                    )
             seen_names.add(f.name)
             result.append(f)
         return tuple(result)
@@ -738,7 +744,7 @@ class App:
         config_ctx_token = None
         if self._install_fields and self._install_manager:
             installation = await self._install_manager.get_installation(event.account_id, event.workspace_id)
-            if installation and installation.config:
+            if installation and installation.config is not None:
                 config_ctx_token = _install_config_context.set(installation.config)
 
         # Process event
