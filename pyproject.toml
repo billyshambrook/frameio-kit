@@ -57,7 +57,7 @@ dev = [
     "mkdocs>=1.6.1",
     "mkdocs-material>=9.6.21",
     "mkdocstrings-python>=1.18.2",
-    "basedpyright>=1.38.0",
+    "ty>=0.0.15",
     "fastapi>=0.115.0",
     "prek>=0.3.0",
     "pytest>=8.4.2",
@@ -80,11 +80,8 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
 
-[tool.basedpyright]
-typeCheckingMode = "standard"
-include = ["src"]
-venvPath = "."
-venv = ".venv"
+[tool.ty.environment]
+python-version = "3.13"
 
 [tool.ruff]
 line-length = 120

@@ -54,7 +54,7 @@ class DynamoDBStorage:
             boto_session_kwargs: Optional extra kwargs passed to ``aioboto3.Session()``.
         """
         try:
-            import aioboto3  # pyright: ignore[reportMissingImports]
+            import aioboto3  # ty: ignore[unresolved-import]
         except ImportError:
             raise ImportError(
                 "aioboto3 is required for DynamoDBStorage. Install it with: pip install frameio-kit[dynamodb]"
