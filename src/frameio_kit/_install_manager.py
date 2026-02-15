@@ -78,9 +78,7 @@ class InstallationManager:
         self._base_url = base_url
         self._allowed_accounts: set[str] | None = set(allowed_accounts) if allowed_accounts is not None else None
         self._install_fields = install_fields
-        self._sensitive_field_names: frozenset[str] = frozenset(
-            f.name for f in install_fields if f.is_sensitive
-        )
+        self._sensitive_field_names: frozenset[str] = frozenset(f.name for f in install_fields if f.is_sensitive)
 
     def is_account_allowed(self, account_id: str) -> bool:
         """Check whether an account is permitted to install this app.

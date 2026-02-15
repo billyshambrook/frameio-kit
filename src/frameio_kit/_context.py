@@ -91,7 +91,5 @@ def get_install_config() -> dict[str, str]:
     """
     config = _install_config_context.get()
     if config is None:
-        raise RuntimeError(
-            "get_install_config() requires install_fields and an existing installation."
-        )
+        raise RuntimeError("get_install_config() requires install_fields and an existing installation.")
     return config

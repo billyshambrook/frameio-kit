@@ -260,7 +260,8 @@ _CONFIG_DISPLAY_FRAGMENT = """\
 {% endfor %}
 """
 
-_STATUS_NOT_INSTALLED = """\
+_STATUS_NOT_INSTALLED = (
+    """\
 <section class="rounded-lg border p-4" style="border-color: var(--fk-border);"
          hx-trigger="refreshStatus from:body" hx-get="{{ install_path }}/status"
          hx-include="[name='account_id'], [name='workspace_id']"
@@ -287,7 +288,9 @@ _STATUS_NOT_INSTALLED = """\
         {% if install_fields %}
         <div class="mb-4">
             <h3 class="text-xs font-semibold uppercase tracking-wide mb-2" style="color: var(--fk-text-muted);">Configuration</h3>
-            """ + _CONFIG_FIELDS_FRAGMENT + """
+            """
+    + _CONFIG_FIELDS_FRAGMENT
+    + """
         </div>
         {% endif %}
         <div class="flex items-center gap-2">
@@ -303,8 +306,10 @@ _STATUS_NOT_INSTALLED = """\
     </form>
 </section>
 """
+)
 
-_STATUS_INSTALLED = """\
+_STATUS_INSTALLED = (
+    """\
 <section class="rounded-lg border p-4" style="border-color: var(--fk-border);"
          hx-trigger="refreshStatus from:body" hx-get="{{ install_path }}/status"
          hx-include="[name='account_id'], [name='workspace_id']"
@@ -331,7 +336,9 @@ _STATUS_INSTALLED = """\
     {% if install_fields %}
     <div class="mb-4">
         <h3 class="text-xs font-semibold uppercase tracking-wide mb-2" style="color: var(--fk-text-muted);">Configuration</h3>
-        """ + _CONFIG_DISPLAY_FRAGMENT + """
+        """
+    + _CONFIG_DISPLAY_FRAGMENT
+    + """
     </div>
     <form hx-post="{{ install_path }}/execute" hx-target="#result-panel" hx-indicator="#save-config-loading" hx-swap="innerHTML" class="mb-4">
         <input type="hidden" name="account_id" value="{{ account_id }}">
@@ -339,7 +346,9 @@ _STATUS_INSTALLED = """\
         <details class="rounded-lg border p-3" style="border-color: var(--fk-border);">
             <summary class="text-sm font-medium cursor-pointer">Edit Configuration</summary>
             <div class="mt-3">
-                """ + _CONFIG_FIELDS_FRAGMENT + """
+                """
+    + _CONFIG_FIELDS_FRAGMENT
+    + """
                 <div class="flex items-center gap-2 mt-2">
                     <button type="submit" class="fk-btn-primary htmx-hide-on-request">Save Configuration</button>
                     <div id="save-config-loading" class="htmx-indicator">
@@ -372,8 +381,10 @@ _STATUS_INSTALLED = """\
     </div>
 </section>
 """
+)
 
-_STATUS_UPDATE_AVAILABLE = """\
+_STATUS_UPDATE_AVAILABLE = (
+    """\
 <section class="rounded-lg border p-4" style="border-color: var(--fk-border);"
          hx-trigger="refreshStatus from:body" hx-get="{{ install_path }}/status"
          hx-include="[name='account_id'], [name='workspace_id']"
@@ -413,7 +424,9 @@ _STATUS_UPDATE_AVAILABLE = """\
             <input type="hidden" name="account_id" value="{{ account_id }}">
             <input type="hidden" name="workspace_id" value="{{ workspace_id }}">
             {% if install_fields %}
-            """ + _CONFIG_FIELDS_FRAGMENT + """
+            """
+    + _CONFIG_FIELDS_FRAGMENT
+    + """
             {% endif %}
             <div class="flex items-center gap-2">
                 <button type="submit" class="fk-btn-primary htmx-hide-on-request">Update App</button>
@@ -443,6 +456,7 @@ _STATUS_UPDATE_AVAILABLE = """\
     </div>
 </section>
 """
+)
 
 _RESULT_SUCCESS = """\
 <section class="rounded-lg border p-4" style="border-color: var(--fk-success); background-color: #f0fdf4;">
