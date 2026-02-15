@@ -22,6 +22,7 @@ nav = [
     { "Middleware" = "guides/middleware.md" },
     { "Self-Service Installation" = "guides/self-service-install.md" },
     { "Mounting to Existing Apps" = "guides/mounting.md" },
+    { "OpenTelemetry" = "guides/opentelemetry.md" },
   ] },
   { "API Reference" = "reference/api.md" },
 ]

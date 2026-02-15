@@ -29,7 +29,7 @@ class Client(AsyncFrameio):
 
         super().__init__(
             base_url=base_url,
-            token=token,
+            token=token,  # ty: ignore[invalid-argument-type]
             headers=headers,
             timeout=timeout,
             follow_redirects=follow_redirects,
@@ -42,7 +42,7 @@ class Client(AsyncFrameio):
 
         self._experimental = AsyncFrameioExperimental(
             base_url=base_url,
-            token=token,
+            token=token,  # ty: ignore[invalid-argument-type]
             headers=experimental_headers,
             timeout=timeout,
             follow_redirects=follow_redirects,

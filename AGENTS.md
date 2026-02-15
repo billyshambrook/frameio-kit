@@ -130,6 +130,7 @@ The SDK follows a modular architecture with clear separation of concerns:
 | `_install_routes.py` | Install UI route handlers (HTMX) |
 | `_install_templates.py` | Install UI Jinja2 templates |
 | `_install_secret_resolver.py` | Auto-wired secret resolver for installations |
+| `_otel.py` | OpenTelemetry tracing middleware |
 
 ### Design Principles
 
