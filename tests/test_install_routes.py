@@ -356,7 +356,7 @@ class TestInstallFieldsInRoutes:
         session_key = "test-session-key"
         import asyncio
 
-        asyncio.get_event_loop().run_until_complete(
+        asyncio.run(
             manager.storage.put(
                 f"install_session:{session_key}",
                 {"encrypted_access_token": base64.b64encode(encrypted_token).decode("utf-8")},
@@ -405,7 +405,7 @@ class TestInstallFieldsInRoutes:
             actions=[],
             config={"api_key": "existing-secret", "environment": "production"},
         )
-        asyncio.get_event_loop().run_until_complete(manager._store_installation(installation))
+        asyncio.run(manager._store_installation(installation))
 
         with TestClient(app_with_fields) as client:
             response = client.post(
