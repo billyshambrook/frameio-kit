@@ -200,6 +200,77 @@ resource "aws_dynamodb_table" "frameio_app_data" {
 }
 ```
 
+#### Auto-Create Table
+
+For development or simple deployments, the table can be created automatically:
+
+```python
+storage = DynamoDBStorage(
+    table_name="frameio-app-data",
+    create_table=True,
+)
+```
+
+When `create_table=True`, the table is created on first use with the correct schema
+(partition key `PK`, PAY_PER_REQUEST billing, TTL enabled). If the table already exists,
+this is a no-op. The check runs once per `DynamoDBStorage` instance.
+
+For production, pre-provisioning via Terraform or CloudFormation is recommended for
+full control over table configuration.
+
+#### IAM Permissions
+
+Without `create_table` (standard usage) — only CRUD permissions are needed:
+
+```hcl
+resource "aws_iam_policy" "frameio_app_dynamodb" {
+  name = "frameio-app-dynamodb"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:DeleteItem",
+      ]
+      Resource = aws_dynamodb_table.frameio_app_data.arn
+    }]
+  })
+}
+```
+
+With `create_table=True` — additionally needs table management permissions:
+
+```hcl
+resource "aws_iam_policy" "frameio_app_dynamodb" {
+  name = "frameio-app-dynamodb"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:GetItem",
+          "dynamodb:PutItem",
+          "dynamodb:DeleteItem",
+        ]
+        Resource = aws_dynamodb_table.frameio_app_data.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:CreateTable",
+          "dynamodb:DescribeTable",
+          "dynamodb:UpdateTimeToLive",
+        ]
+        Resource = aws_dynamodb_table.frameio_app_data.arn
+      }
+    ]
+  })
+}
+```
+
 ### Custom Storage
 
 Implement the `Storage` protocol for any other backend:
