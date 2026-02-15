@@ -4,7 +4,7 @@ import pytest
 from starlette.datastructures import Headers
 
 from frameio_kit import verify_signature
-from frameio_kit._security import _TIMESTAMP_TOLERANCE_SECONDS  # type: ignore
+from frameio_kit._security import _TIMESTAMP_TOLERANCE_SECONDS
 
 
 @pytest.fixture
