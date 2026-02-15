@@ -1,6 +1,6 @@
 # App Configuration
 
-The [`App`](../api_reference.md#frameio_kit.App) class is the central entry point for your Frame.io integration. This guide covers app-level configuration options.
+The [`App`](../reference/api.md#frameio_kit.App) class is the central entry point for your Frame.io integration. This guide covers app-level configuration options.
 
 ## Basic Initialization
 
@@ -17,7 +17,7 @@ app = App()
 
 ### API Token
 
-Provide an API token to enable authenticated calls to the Frame.io API via [`app.client`](../api_reference.md#frameio_kit.App.client):
+Provide an API token to enable authenticated calls to the Frame.io API via [`app.client`](../reference/api.md#frameio_kit.App.client):
 
 ```python
 import os
@@ -34,7 +34,7 @@ async def on_file_ready(event: WebhookEvent):
     print(f"File name: {file.data.name}")
 ```
 
-See [Client API](client_api.md) for more details.
+See [Client API](client-api.md) for more details.
 
 ### Middleware
 
@@ -72,7 +72,7 @@ app = App(
 )
 ```
 
-See [User Authentication](user_auth.md) for complete OAuth setup.
+See [User Authentication](user-auth.md) for complete OAuth setup.
 
 ### Storage and Encryption
 
@@ -91,7 +91,7 @@ app = App(
 )
 ```
 
-See [User Authentication - Storage Backends](user_auth.md#storage-backends) for details.
+See [User Authentication - Storage Backends](user-auth.md#storage-backends) for details.
 
 ### Branding
 
@@ -110,7 +110,7 @@ app = App(
 )
 ```
 
-See [Installation System - Branding](installation.md#branding) for details.
+See [Self-Service Installation - Branding](self-service-install.md#branding) for details.
 
 ### Install Fields
 
@@ -136,7 +136,7 @@ async def on_file_ready(event):
     api_key = config["api_key"]
 ```
 
-See [Installation System - Custom Install Fields](installation.md#custom-install-fields) for details.
+See [Self-Service Installation - Custom Install Fields](self-service-install.md#custom-install-fields) for details.
 
 ## Secret Resolution Precedence
 
@@ -161,8 +161,21 @@ This allows you to:
 4. **Test secret resolution** - Ensure resolvers work correctly before deploying
 5. **Monitor resolver performance** - Secret lookup happens on every request
 
+## Environment Variables
+
+frameio-kit uses the following environment variables. All are optional — each has an alternative configuration method.
+
+| Variable | Purpose | Alternative |
+|----------|---------|-------------|
+| `WEBHOOK_SECRET` | Default signing secret for webhooks | Pass `secret=` to `@app.on_webhook` |
+| `CUSTOM_ACTION_SECRET` | Default signing secret for custom actions | Pass `secret=` to `@app.on_action` |
+| `FRAMEIO_TOKEN` | Frame.io API token for `app.client` | Pass `token=` to `App()` |
+| `FRAMEIO_AUTH_ENCRYPTION_KEY` | Fernet key for encrypting stored tokens | Pass `encryption_key=` to `App()` |
+| `ADOBE_CLIENT_ID` | Adobe OAuth client ID | Pass via `OAuthConfig(client_id=)` |
+| `ADOBE_CLIENT_SECRET` | Adobe OAuth client secret | Pass via `OAuthConfig(client_secret=)` |
+
 ## See Also
 
 - [Mounting to Existing Apps](mounting.md) - Mount your App to FastAPI, Starlette, or any ASGI framework
 - [Webhooks](webhooks.md#dynamic-secret-resolution) - Webhook-specific secret resolution
-- [Custom Actions](custom_actions.md#dynamic-secret-resolution) - Action-specific secret resolution
+- [Custom Actions](custom-actions.md#dynamic-secret-resolution) - Action-specific secret resolution

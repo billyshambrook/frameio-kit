@@ -12,6 +12,8 @@ Enable Adobe Login OAuth for user-specific authentication. API calls are attribu
 
 **For most integrations, server-to-server authentication is sufficient and simpler.**
 
+For background on the two authentication models, see the [Frame.io authentication guide](https://next.developer.frame.io/platform/docs/guides/authentication).
+
 ## Quick Start
 
 ### 1. Configure Adobe OAuth
@@ -312,6 +314,6 @@ async def user_action(event: ActionEvent):
 
 ## Next Steps
 
-- [Custom Actions](custom_actions.md) - Learn about building interactive workflows
-- [Client API](client_api.md) - Understand API authentication patterns
-- [API Reference](../api_reference.md) - Detailed OAuth types documentation
+- [Custom Actions](custom-actions.md) - Learn about building interactive workflows
+- [Client API](client-api.md) - Understand API authentication patterns
+- [API Reference](../reference/api.md) - Detailed OAuth types documentation
