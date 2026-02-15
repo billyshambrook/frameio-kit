@@ -8,6 +8,7 @@ DynamoDB table requirements:
     - TTL attribute: ``ttl`` (Number) — enable TTL in DynamoDB for automatic cleanup
 """
 
+import asyncio
 import json
 import time
 from typing import Any
@@ -70,6 +71,7 @@ class DynamoDBStorage:
         self._endpoint_url = endpoint_url
         self._create_table = create_table
         self._table_ensured = False
+        self._table_lock = asyncio.Lock()
         self._session = aioboto3.Session(**(boto_session_kwargs or {}))
 
     def _resource_kwargs(self) -> dict[str, Any]:
@@ -84,29 +86,33 @@ class DynamoDBStorage:
         if self._table_ensured:
             return
 
-        async with self._session.client("dynamodb", **self._resource_kwargs()) as client:
-            try:
-                await client.create_table(
-                    TableName=self._table_name,
-                    KeySchema=[{"AttributeName": "PK", "KeyType": "HASH"}],
-                    AttributeDefinitions=[{"AttributeName": "PK", "AttributeType": "S"}],
-                    BillingMode="PAY_PER_REQUEST",
-                )
-                waiter = client.get_waiter("table_exists")
-                await waiter.wait(TableName=self._table_name)
+        async with self._table_lock:
+            if self._table_ensured:
+                return
 
-                await client.update_time_to_live(
-                    TableName=self._table_name,
-                    TimeToLiveSpecification={
-                        "Enabled": True,
-                        "AttributeName": "ttl",
-                    },
-                )
-            except ClientError as e:
-                if e.response["Error"]["Code"] != "ResourceInUseException":
-                    raise
+            async with self._session.client("dynamodb", **self._resource_kwargs()) as client:
+                try:
+                    await client.create_table(
+                        TableName=self._table_name,
+                        KeySchema=[{"AttributeName": "PK", "KeyType": "HASH"}],
+                        AttributeDefinitions=[{"AttributeName": "PK", "AttributeType": "S"}],
+                        BillingMode="PAY_PER_REQUEST",
+                    )
+                    waiter = client.get_waiter("table_exists")
+                    await waiter.wait(TableName=self._table_name)
 
-        self._table_ensured = True
+                    await client.update_time_to_live(
+                        TableName=self._table_name,
+                        TimeToLiveSpecification={
+                            "Enabled": True,
+                            "AttributeName": "ttl",
+                        },
+                    )
+                except ClientError as e:
+                    if e.response["Error"]["Code"] != "ResourceInUseException":
+                        raise
+
+            self._table_ensured = True
 
     async def get(self, key: str) -> dict[str, Any] | None:
         if self._create_table:
