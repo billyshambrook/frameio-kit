@@ -18,10 +18,10 @@ from ._exceptions import (
     TokenExchangeError,
     TokenRefreshError,
 )
+from ._install_models import ActionRecord, Installation, InstallField, WebhookRecord
 from ._middleware import Middleware, NextFunc
 from ._oauth import OAuthConfig
-from ._storage import MemoryStorage, Storage
-from ._storage_dynamodb import DynamoDBStorage
+from ._otel import OpenTelemetryMiddleware
 from ._responses import (
     AnyResponse,
     CheckboxField,
@@ -34,8 +34,9 @@ from ._responses import (
     TextareaField,
     TextField,
 )
-from ._install_models import ActionRecord, InstallField, Installation, WebhookRecord
 from ._security import verify_signature
+from ._storage import MemoryStorage, Storage
+from ._storage_dynamodb import DynamoDBStorage
 
 __all__ = [
     # _app.py
@@ -77,6 +78,8 @@ __all__ = [
     "NextFunc",
     # _oauth.py
     "OAuthConfig",
+    # _otel.py
+    "OpenTelemetryMiddleware",
     # _storage.py
     "MemoryStorage",
     "Storage",
