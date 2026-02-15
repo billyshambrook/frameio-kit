@@ -111,7 +111,7 @@ class TestCreateTableTrue:
         await storage.put("key", {"data": "value"})
 
         client.create_table.assert_called_once()
-        waiter.wait.assert_not_called()
+        waiter.wait.assert_called_once()
         client.update_time_to_live.assert_not_called()
 
     async def test_create_table_only_once(self, mock_session):

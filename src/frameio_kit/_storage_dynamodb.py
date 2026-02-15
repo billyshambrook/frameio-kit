@@ -13,8 +13,6 @@ import json
 import time
 from typing import Any
 
-from botocore.exceptions import ClientError
-
 
 class DynamoDBStorage:
     """DynamoDB storage backend for multi-server deployments.
@@ -92,15 +90,31 @@ class DynamoDBStorage:
 
             async with self._session.client("dynamodb", **self._resource_kwargs()) as client:
                 try:
+                    from botocore.exceptions import ClientError
+                except ImportError:
+                    raise ImportError(
+                        "botocore is required for DynamoDBStorage. Install it with: pip install frameio-kit[dynamodb]"
+                    ) from None
+
+                created = False
+                try:
                     await client.create_table(
                         TableName=self._table_name,
                         KeySchema=[{"AttributeName": "PK", "KeyType": "HASH"}],
                         AttributeDefinitions=[{"AttributeName": "PK", "AttributeType": "S"}],
                         BillingMode="PAY_PER_REQUEST",
                     )
-                    waiter = client.get_waiter("table_exists")
-                    await waiter.wait(TableName=self._table_name)
+                    created = True
+                except ClientError as e:
+                    if e.response["Error"]["Code"] != "ResourceInUseException":
+                        raise
 
+                # Always wait for the table to be ready, whether we just
+                # created it or another process is creating it.
+                waiter = client.get_waiter("table_exists")
+                await waiter.wait(TableName=self._table_name)
+
+                if created:
                     await client.update_time_to_live(
                         TableName=self._table_name,
                         TimeToLiveSpecification={
@@ -108,9 +122,6 @@ class DynamoDBStorage:
                             "AttributeName": "ttl",
                         },
                     )
-                except ClientError as e:
-                    if e.response["Error"]["Code"] != "ResourceInUseException":
-                        raise
 
             self._table_ensured = True
 
