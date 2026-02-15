@@ -8,6 +8,7 @@ DynamoDB table requirements:
     - TTL attribute: ``ttl`` (Number) — enable TTL in DynamoDB for automatic cleanup
 """
 
+import asyncio
 import json
 import time
 from typing import Any
@@ -42,6 +43,7 @@ class DynamoDBStorage:
         region_name: str | None = None,
         endpoint_url: str | None = None,
         boto_session_kwargs: dict[str, Any] | None = None,
+        create_table: bool = False,
     ) -> None:
         """Initialize DynamoDB storage.
 
@@ -52,6 +54,8 @@ class DynamoDBStorage:
                 files, or instance metadata.
             endpoint_url: Optional endpoint URL (useful for local DynamoDB).
             boto_session_kwargs: Optional extra kwargs passed to ``aioboto3.Session()``.
+            create_table: If True, automatically create the table on first use
+                if it doesn't already exist. Defaults to False.
         """
         try:
             import aioboto3
@@ -63,6 +67,9 @@ class DynamoDBStorage:
         self._table_name = table_name
         self._region_name = region_name
         self._endpoint_url = endpoint_url
+        self._create_table = create_table
+        self._table_ensured = False
+        self._table_lock = asyncio.Lock()
         self._session = aioboto3.Session(**(boto_session_kwargs or {}))
 
     def _resource_kwargs(self) -> dict[str, Any]:
@@ -73,7 +80,54 @@ class DynamoDBStorage:
             kwargs["endpoint_url"] = self._endpoint_url
         return kwargs
 
+    async def _ensure_table(self) -> None:
+        if self._table_ensured:
+            return
+
+        async with self._table_lock:
+            if self._table_ensured:
+                return
+
+            async with self._session.client("dynamodb", **self._resource_kwargs()) as client:
+                try:
+                    from botocore.exceptions import ClientError
+                except ImportError:
+                    raise ImportError(
+                        "botocore is required for DynamoDBStorage. Install it with: pip install frameio-kit[dynamodb]"
+                    ) from None
+
+                created = False
+                try:
+                    await client.create_table(
+                        TableName=self._table_name,
+                        KeySchema=[{"AttributeName": "PK", "KeyType": "HASH"}],
+                        AttributeDefinitions=[{"AttributeName": "PK", "AttributeType": "S"}],
+                        BillingMode="PAY_PER_REQUEST",
+                    )
+                    created = True
+                except ClientError as e:
+                    if e.response["Error"]["Code"] != "ResourceInUseException":
+                        raise
+
+                # Always wait for the table to be ready, whether we just
+                # created it or another process is creating it.
+                waiter = client.get_waiter("table_exists")
+                await waiter.wait(TableName=self._table_name)
+
+                if created:
+                    await client.update_time_to_live(
+                        TableName=self._table_name,
+                        TimeToLiveSpecification={
+                            "Enabled": True,
+                            "AttributeName": "ttl",
+                        },
+                    )
+
+            self._table_ensured = True
+
     async def get(self, key: str) -> dict[str, Any] | None:
+        if self._create_table:
+            await self._ensure_table()
         async with self._session.resource("dynamodb", **self._resource_kwargs()) as dynamodb:
             table = await dynamodb.Table(self._table_name)
             response = await table.get_item(Key={"PK": key})
@@ -91,6 +145,8 @@ class DynamoDBStorage:
         return json.loads(item["value"])
 
     async def put(self, key: str, value: dict[str, Any], *, ttl: int | None = None) -> None:
+        if self._create_table:
+            await self._ensure_table()
         item: dict[str, Any] = {
             "PK": key,
             "value": json.dumps(value),
@@ -103,6 +159,8 @@ class DynamoDBStorage:
             await table.put_item(Item=item)
 
     async def delete(self, key: str) -> None:
+        if self._create_table:
+            await self._ensure_table()
         async with self._session.resource("dynamodb", **self._resource_kwargs()) as dynamodb:
             table = await dynamodb.Table(self._table_name)
             await table.delete_item(Key={"PK": key})
