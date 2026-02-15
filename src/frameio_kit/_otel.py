@@ -60,6 +60,7 @@ class OpenTelemetryMiddleware(Middleware):
     def __init__(self, tracer_name: str = "frameio_kit", tracer_provider: TracerProvider | None = None) -> None:
         try:
             from opentelemetry import trace
+            from opentelemetry.trace import StatusCode
         except ImportError:
             raise ImportError(
                 "opentelemetry-api is required for OpenTelemetryMiddleware. "
@@ -67,6 +68,9 @@ class OpenTelemetryMiddleware(Middleware):
             ) from None
 
         self._tracer: Tracer = trace.get_tracer(tracer_name, tracer_provider=tracer_provider)
+        self._span_kind = trace.SpanKind.SERVER
+        self._status_ok = StatusCode.OK
+        self._status_error = StatusCode.ERROR
 
     async def __call__(self, event: AnyEvent, next: NextFunc) -> AnyResponse:
         """Wrap event processing in an OpenTelemetry span.
@@ -78,12 +82,9 @@ class OpenTelemetryMiddleware(Middleware):
         Returns:
             The response from the next middleware or handler.
         """
-        from opentelemetry import trace
-        from opentelemetry.trace import StatusCode
-
         with self._tracer.start_as_current_span(
             f"frameio {event.type}",
-            kind=trace.SpanKind.SERVER,
+            kind=self._span_kind,
             attributes={
                 "frameio.event.type": event.type,
                 "frameio.account.id": event.account_id,
@@ -102,8 +103,8 @@ class OpenTelemetryMiddleware(Middleware):
                 response = await next(event)
             except Exception as exc:
                 span.record_exception(exc)
-                span.set_status(StatusCode.ERROR, str(exc))
+                span.set_status(self._status_error, str(exc))
                 raise
 
-            span.set_status(StatusCode.OK)
+            span.set_status(self._status_ok)
             return response
