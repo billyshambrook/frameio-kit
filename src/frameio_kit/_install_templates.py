@@ -229,7 +229,7 @@ _CONFIG_FIELDS_FRAGMENT = """\
     {% if field.type == "select" %}
     <select id="config_{{ field.name }}" name="config_{{ field.name }}"
             class="w-full rounded-lg border px-3 py-2 text-sm"
-            style="border-color: var(--fk-border);">
+            style="border-color: var(--fk-border);"{% if field.required %} required{% endif %}>
         {% for option in field.options %}
         <option value="{{ option }}"{% if config_values.get(field.name, field.default) == option %} selected{% endif %}>{{ option }}</option>
         {% endfor %}
@@ -238,7 +238,9 @@ _CONFIG_FIELDS_FRAGMENT = """\
     <textarea id="config_{{ field.name }}" name="config_{{ field.name }}"
               class="w-full rounded-lg border px-3 py-2 text-sm"
               style="border-color: var(--fk-border);"
-              rows="3"{% if field.required %} required{% endif %}>{{ config_values.get(field.name, field.default) }}</textarea>
+              rows="3"
+              {% if field.required and not (field.is_sensitive and field.name in sensitive_existing) %}required{% endif %}
+              {% if field.is_sensitive and field.name in sensitive_existing %}placeholder="(unchanged)"{% endif %}>{{ config_values.get(field.name, field.default) }}</textarea>
     {% else %}
     <input type="{{ field.type }}" id="config_{{ field.name }}" name="config_{{ field.name }}"
            value="{{ config_values.get(field.name, field.default) }}"
