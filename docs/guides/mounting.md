@@ -1,6 +1,6 @@
 # Mounting to Existing Applications
 
-You can mount your frameio-kit [`App`](../api_reference.md#frameio_kit.App) into any existing ASGI-compatible application without changing your existing code. Since `App` is fully ASGI-compliant, it integrates seamlessly with frameworks like **FastAPI**, **Starlette**, **Quart**, and any other ASGI server.
+You can mount your frameio-kit [`App`](../reference/api.md#frameio_kit.App) into any existing ASGI-compatible application without changing your existing code. Since `App` is fully ASGI-compliant, it integrates seamlessly with frameworks like **FastAPI**, **Starlette**, **Quart**, and any other ASGI server.
 
 !!! tip "ASGI Compatibility"
     The examples below use FastAPI, but the same mounting approach works with any ASGI-compatible framework. Simply use your framework's mount or route mounting mechanism.
@@ -9,10 +9,10 @@ You can mount your frameio-kit [`App`](../api_reference.md#frameio_kit.App) into
 
 Mounting to an existing application is useful when you want to:
 
-- **Consolidate services** – Run your Frame.io integration alongside existing HTTP APIs.
-- **Share infrastructure** – Reuse middleware, logging, and monitoring from your existing app.
-- **Unified deployment** – Deploy one application instead of multiple services.
-- **Common endpoints** – Provide health checks, metrics, and other shared endpoints.
+- **Consolidate services** -- Run your Frame.io integration alongside existing HTTP APIs.
+- **Share infrastructure** -- Reuse middleware, logging, and monitoring from your existing app.
+- **Unified deployment** -- Deploy one application instead of multiple services.
+- **Common endpoints** -- Provide health checks, metrics, and other shared endpoints.
 
 ## Exposed Routes
 
@@ -28,7 +28,7 @@ Before mounting, understand what routes your frameio-kit `App` exposes. The path
 - **`GET /auth/callback`** - Handles OAuth callback
 
 !!! note "OAuth Routes"
-    OAuth routes are only available when you configure the `App` with an [`OAuthConfig`](../api_reference.md#frameio_kit.OAuthConfig). See [User Authentication](user_auth.md) for details.
+    OAuth routes are only available when you configure the `App` with an [`OAuthConfig`](../reference/api.md#frameio_kit.OAuthConfig). See [User Authentication](user-auth.md) for details.
 
 ## Mounting Options
 
@@ -173,5 +173,5 @@ If you get "Invalid signature" errors:
 
 - **[App Configuration](app.md)** - Configure middleware, OAuth, and dynamic secret resolution
 - **[Webhooks](webhooks.md)** - Learn about webhook event types and best practices
-- **[Custom Actions](custom_actions.md)** - Build interactive forms and workflows
-- **[User Authentication](user_auth.md)** - Enable Adobe Login OAuth for user-specific actions
+- **[Custom Actions](custom-actions.md)** - Build interactive forms and workflows
+- **[User Authentication](user-auth.md)** - Enable Adobe Login OAuth for user-specific actions

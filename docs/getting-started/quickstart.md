@@ -1,52 +1,18 @@
-# Getting Started
+# Quickstart
 
-Welcome to `frameio-kit`! This guide will take you from zero to a working Frame.io integration in just a few minutes.
+This guide takes you from zero to a working Frame.io integration in minutes. If you haven't installed frameio-kit yet, start with the [Installation](installation.md) page.
 
 ## What You'll Build
 
 By the end of this guide, you'll have:
 
-- ✅ A running Frame.io integration
-- ✅ A custom action that responds to user clicks
-- ✅ A webhook that processes file events
-- ✅ An understanding of the core concepts
+- A running Frame.io integration
+- A custom action that responds to user clicks
+- A webhook that processes file events
 
-## Prerequisites
+If you're not sure what webhooks and custom actions are, see the [Concepts](../concepts.md) page for an overview.
 
-Before you start, make sure you have:
-
-- **Python 3.13+** installed
-- **A Frame.io account** with workspace access
-- **Basic Python knowledge** (async/await helpful but not required)
-
-## Step 1: Installation
-
-Create a new project directory and install `frameio-kit`:
-
-```bash
-# Create project directory
-mkdir my-frameio-app
-cd my-frameio-app
-
-# Install frameio-kit (we recommend uv for fast, reliable installs)
-uv add frameio-kit uvicorn
-
-# Or with pip
-pip install frameio-kit uvicorn
-```
-
-### Optional Dependencies
-
-frameio-kit provides optional extras for additional features:
-
-| Extra | Command | Description |
-|-------|---------|-------------|
-| `install` | `pip install frameio-kit[install]` | [Installation system](installation.md) for self-service workspace onboarding |
-| `dynamodb` | `pip install frameio-kit[dynamodb]` | [DynamoDB storage backend](user_auth.md#multi-server-dynamodbstorage) for multi-server deployments |
-
-You can combine extras: `pip install frameio-kit[install,dynamodb]`
-
-## Step 2: Create Your Application
+## Step 1: Create Your Application
 
 Create a file named `main.py` with the following code:
 
@@ -84,9 +50,9 @@ async def on_file_ready(event: WebhookEvent):
 - **`Message`** - Returned from the custom action handler to display a response in the Frame.io UI
 - **Environment Variables** - `CUSTOM_ACTION_SECRET` and `WEBHOOK_SECRET` are automatically loaded from environment
 
-Learn more about [Custom Actions](custom_actions.md) and [Webhooks](webhooks.md)
+Learn more about [Custom Actions](../guides/custom-actions.md) and [Webhooks](../guides/webhooks.md).
 
-## Step 3: Expose Your Server
+## Step 2: Expose Your Server
 
 Frame.io needs a public URL to send events to your application. For local development, use [ngrok](https://ngrok.com/):
 
@@ -94,13 +60,13 @@ Frame.io needs a public URL to send events to your application. For local develo
 ngrok http 8000
 ```
 
-Copy the HTTPS forwarding URL (e.g., `https://abc123.ngrok-free.app`) – you'll need it for Frame.io configuration.
+Copy the HTTPS forwarding URL (e.g., `https://abc123.ngrok-free.app`) -- you'll need it for Frame.io configuration.
 
-## Step 4: Configure Frame.io
+## Step 3: Configure Frame.io
 
 ### Create a Custom Action
 
-1. In Frame.io, navigate to **Account Settings → Actions**
+1. In Frame.io, navigate to **Account Settings > Actions**
 2. Click **"New Action"** and configure:
    - **Name**: `Say Hello`
    - **Event**: `greeting.say_hello`
@@ -136,15 +102,25 @@ WEBHOOK_SECRET=your-webhook-secret-here
     @app.on_action("my_app.analyze", name="Analyze", description="Analyze file", secret=os.environ["ANALYZE_CUSTOM_ACTION_SECRET"])
     ```
 
-    **For dynamic secrets** (e.g., multi-tenant apps, database-backed secrets): See [Secret Resolution Precedence](app.md#secret-resolution-precedence) in the App Configuration guide, or use the [Installation System](installation.md) for automatic secret management.
+    **For dynamic secrets** (e.g., multi-tenant apps, database-backed secrets): See [Secret Resolution Precedence](../guides/app.md#secret-resolution-precedence) in the App Configuration guide, or use the [Self-Service Installation System](../guides/self-service-install.md) for automatic secret management.
 
-## Step 5: Run Your Application
+## Step 4: Run Your Application
+
+Export the environment variables and start the server:
 
 ```bash
+# Load environment variables
+export CUSTOM_ACTION_SECRET=your-action-secret-here
+export WEBHOOK_SECRET=your-webhook-secret-here
+
+# Start the server
 uvicorn main:app --reload
 ```
 
-## Step 6: Test Your Integration
+!!! tip "Using a .env file"
+    The `.env` file you created in the previous step is for reference — `uvicorn` does not load it automatically. You can either export the variables manually as shown above, or use `uvicorn --env-file .env main:app --reload` to load them from the file.
+
+## Step 5: Test Your Integration
 
 **Test the Custom Action:**
 
@@ -171,12 +147,15 @@ You now have a working Frame.io integration that:
 
 Explore more features to build powerful integrations:
 
-- **[App Configuration](app.md)** - Configure middleware, OAuth, and dynamic secret resolution
-- **[Webhooks](webhooks.md)** - Learn about different event types and best practices
-- **[Custom Actions](custom_actions.md)** - Build interactive forms and workflows
-- **[Client API](client_api.md)** - Make authenticated calls to Frame.io's API
-- **[Middleware](middleware.md)** - Add logging, metrics, and error handling
-- **[User Authentication](user_auth.md)** - Enable Adobe Login OAuth for user-specific actions
+- **[App Configuration](../guides/app.md)** - Configure middleware, OAuth, and dynamic secret resolution
+- **[Webhooks](../guides/webhooks.md)** - Learn about different event types and best practices
+- **[Custom Actions](../guides/custom-actions.md)** - Build interactive forms and workflows
+- **[Client API](../guides/client-api.md)** - Make authenticated calls to Frame.io's API
+- **[Middleware](../guides/middleware.md)** - Add logging, metrics, and error handling
+- **[User Authentication](../guides/user-auth.md)** - Enable Adobe Login OAuth for user-specific actions
+
+!!! tip "Building for multiple workspaces?"
+    If you're building a product that will be installed across many Frame.io workspaces, the [Self-Service Installation](../guides/self-service-install.md) system handles webhook/action registration and secret management automatically — no manual configuration per workspace.
 
 ## Troubleshooting
 
@@ -195,5 +174,4 @@ Explore more features to build powerful integrations:
 - Verify ngrok is running and the URL is correct
 - Check event types match exactly between Frame.io and your code
 
-For more help, see the [API Reference](../api_reference.md) or check Frame.io's developer documentation.
-
+For more help, see the [API Reference](../reference/api.md) or check the [Frame.io developer documentation](https://next.developer.frame.io).

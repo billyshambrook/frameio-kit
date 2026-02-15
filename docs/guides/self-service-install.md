@@ -1,4 +1,4 @@
-# Installation System
+# Self-Service Installation
 
 Self-service installation pages for workspace admins. Auto-discovers handlers from decorators, creates webhooks and custom actions via the Frame.io API, and manages signing secrets — all with a branded UI.
 
@@ -349,7 +349,7 @@ The installation system mounts these routes:
 
 ## Next Steps
 
-- [User Authentication](user_auth.md) — OAuth for user-specific API calls
-- [Custom Actions](custom_actions.md) — Build interactive workflows
+- [User Authentication](user-auth.md) — OAuth for user-specific API calls
+- [Custom Actions](custom-actions.md) — Build interactive workflows
 - [Webhooks](webhooks.md) — React to Frame.io events
-- [API Reference](../api_reference.md) — Complete type documentation
+- [API Reference](../reference/api.md) — Complete type documentation

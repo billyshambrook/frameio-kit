@@ -8,18 +8,22 @@ edit_uri = "edit/main/docs/"
 
 nav = [
   { "Home" = "index.md" },
-  { "Usage" = [
-    { "Getting Started" = "usage/getting_started.md" },
-    { "App Configuration" = "usage/app.md" },
-    { "Mounting to Existing Apps" = "usage/mounting.md" },
-    { "Webhooks" = "usage/webhooks.md" },
-    { "Custom Actions" = "usage/custom_actions.md" },
-    { "Client API" = "usage/client_api.md" },
-    { "Middleware" = "usage/middleware.md" },
-    { "User Authentication" = "usage/user_auth.md" },
-    { "Installation System" = "usage/installation.md" },
+  { "Concepts" = "concepts.md" },
+  { "Getting Started" = [
+    { "Installation" = "getting-started/installation.md" },
+    { "Quickstart" = "getting-started/quickstart.md" },
   ] },
-  { "API Reference" = "api_reference.md" },
+  { "Guides" = [
+    { "App Configuration" = "guides/app.md" },
+    { "Webhooks" = "guides/webhooks.md" },
+    { "Custom Actions" = "guides/custom-actions.md" },
+    { "Client API" = "guides/client-api.md" },
+    { "User Authentication" = "guides/user-auth.md" },
+    { "Middleware" = "guides/middleware.md" },
+    { "Self-Service Installation" = "guides/self-service-install.md" },
+    { "Mounting to Existing Apps" = "guides/mounting.md" },
+  ] },
+  { "API Reference" = "reference/api.md" },
 ]
 
 [project.theme]
