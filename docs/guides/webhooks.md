@@ -174,12 +174,64 @@ async def on_file_ready(event: WebhookEvent):
 
 See the [Frame.io webhook documentation](https://next.developer.frame.io/platform/docs/guides/webhooks) for instructions on how to set up webhooks.
 
+## Long-Running Operations
+
+Frame.io expects a response within **5 seconds**. If your handler takes longer (file processing, AI analysis, external API calls), offload the work and respond immediately:
+
+```python
+import asyncio
+
+@app.on_webhook("file.ready")
+async def on_file_ready(event: WebhookEvent):
+    # Offload heavy work — respond to Frame.io immediately
+    asyncio.create_task(process_file_in_background(event))
+
+async def process_file_in_background(event: WebhookEvent):
+    # This runs after the webhook response is sent
+    file = await app.client.files.show(
+        account_id=event.account_id,
+        file_id=event.resource_id,
+    )
+    result = await run_analysis(file)
+    await app.client.comments.create(
+        account_id=event.account_id,
+        file_id=event.resource_id,
+        data=CreateCommentParamsData(text=f"Analysis complete: {result}"),
+    )
+```
+
+!!! warning "asyncio.create_task caveats"
+    `asyncio.create_task` works for single-server deployments, but tasks are lost if the process crashes. For production workloads, consider pushing to a task queue (Celery, AWS SQS, Redis Queue) and processing in a separate worker.
+
+## Handling Retries and Idempotency
+
+Frame.io retries webhooks up to **5 times** (initial + 4 retries) when your server returns a non-2xx status or doesn't respond within 5 seconds. This means your handler may be called multiple times for the same event.
+
+Design handlers to be **idempotent** — safe to run more than once with the same input:
+
+```python
+# Track processed events to avoid duplicate work
+processed_events: set[str] = set()
+
+@app.on_webhook("file.ready")
+async def on_file_ready(event: WebhookEvent):
+    # Deduplicate using resource_id (or a more specific event identifier)
+    if event.resource_id in processed_events:
+        return  # Already handled
+
+    processed_events.add(event.resource_id)
+    await process_file(event.resource_id)
+```
+
+!!! tip "Production deduplication"
+    For multi-server deployments, use a shared store (Redis, DynamoDB) for deduplication instead of an in-memory set.
+
 ## Best Practices
 
-1. **Handle errors gracefully** - Webhook failures can cause retries
-2. **Keep handlers fast** - Long-running operations should be queued, Frame.io expects a response within 5 seconds
-3. **Handle retries** - Non-2xx or slow responses will cause Frame.io to retry the request up to 5 times (initial + 4 retries)
-4. **Log webhook events** for debugging and monitoring
+1. **Keep handlers fast** — respond within 5 seconds; offload heavy work to background tasks
+2. **Design for retries** — handlers should be idempotent since Frame.io retries on failure
+3. **Handle errors gracefully** — unhandled exceptions cause 500 responses, which trigger retries
+4. **Log webhook events** — include `event.type` and `event.resource_id` for debugging
 
 ## Security Considerations
 

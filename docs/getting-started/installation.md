@@ -35,6 +35,17 @@ frameio-kit provides optional extras for additional features:
 
 You can combine extras: `pip install frameio-kit[install,dynamodb]`
 
+## Included Dependencies
+
+frameio-kit automatically installs the [`frameio`](https://pypi.org/project/frameio/) package, which is Frame.io's official Python SDK. You'll see it used in code examples for API request/response models:
+
+```python
+from frameio import CreateCommentParamsData  # Data models from the Frame.io SDK
+from frameio_kit import App, WebhookEvent     # Framework from frameio-kit
+```
+
+The `frameio` package provides typed data models for API calls. The `frameio_kit` package provides the framework (App, event handling, middleware, etc.). Both are imported separately but work together.
+
 ## Frame.io Developer Setup
 
 To receive webhooks and register custom actions, you'll need to configure your app in the Frame.io Developer Console. See the [Frame.io developer documentation](https://next.developer.frame.io) for instructions on creating apps and obtaining credentials.

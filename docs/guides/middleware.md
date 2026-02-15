@@ -85,47 +85,58 @@ app = App(
 )
 ```
 
-## Example 1: Using [`__call__`](../reference/api.md#frameio_kit.Middleware.__call__) for Universal Logic
+## Example 1: Logging and Timing
 
 ```python
+import logging
 import time
 from frameio_kit import App, Middleware, WebhookEvent, Message
 from frameio_kit import AnyEvent, NextFunc, AnyResponse
 
-class TimingMiddleware(Middleware):
+logger = logging.getLogger("frameio_kit")
+
+class LoggingMiddleware(Middleware):
     async def __call__(self, event: AnyEvent, next: NextFunc) -> AnyResponse:
         start_time = time.monotonic()
+        logger.info("event_received", extra={"event_type": event.type, "resource_id": event.resource_id})
 
         try:
-            return await next(event)
-        finally:
+            result = await next(event)
             duration = time.monotonic() - start_time
-            print(f"Completed in {duration:.2f}s")
+            logger.info("event_processed", extra={"event_type": event.type, "duration_s": f"{duration:.3f}"})
+            return result
+        except Exception:
+            duration = time.monotonic() - start_time
+            logger.exception("event_failed", extra={"event_type": event.type, "duration_s": f"{duration:.3f}"})
+            raise
 
 # Usage
 app = App(
     token=os.getenv("FRAMEIO_TOKEN"),
-    middleware=[TimingMiddleware()]
+    middleware=[LoggingMiddleware()]
 )
 
 @app.on_webhook("file.ready", secret=os.environ["WEBHOOK_SECRET"])
 async def on_file_ready(event: WebhookEvent):
-    print("File ready")
+    logger.info("File ready: %s", event.resource_id)
 ```
 
 ## Example 2: Using Specific Hooks
 
 ```python
+import logging
 from frameio_kit import App, Middleware, WebhookEvent, ActionEvent, Message
 from frameio_kit import NextFunc, AnyResponse
 
-class LoggingMiddleware(Middleware):
+logger = logging.getLogger("frameio_kit")
+
+class EventLogMiddleware(Middleware):
     async def on_webhook(self, event: WebhookEvent, next: NextFunc) -> AnyResponse:
-        print(f"Webhook: {event.type} for {event.resource_id}")
+        logger.info("webhook: %s for %s", event.type, event.resource_id)
         return await next(event)
 
     async def on_action(self, event: ActionEvent, next: NextFunc) -> AnyResponse:
-        print(f"Action: {event.type} by {event.user.id}")
+        logger.info("action: %s by %s", event.type, event.user.id)
         return await next(event)
 
 class ValidationMiddleware(Middleware):
@@ -137,12 +148,12 @@ class ValidationMiddleware(Middleware):
 # Usage
 app = App(
     token=os.getenv("FRAMEIO_TOKEN"),
-    middleware=[LoggingMiddleware(), ValidationMiddleware()]
+    middleware=[EventLogMiddleware(), ValidationMiddleware()]
 )
 
 @app.on_webhook("file.ready", secret=os.environ["WEBHOOK_SECRET"])
 async def on_file_ready(event: WebhookEvent):
-    print("File ready")
+    logger.info("File ready: %s", event.resource_id)
 
 @app.on_action("my_app.analyze", name="Analyze", description="Analyze file", secret=os.environ["ACTION_SECRET"])
 async def analyze_file(event: ActionEvent):
@@ -188,34 +199,47 @@ app = App(
 )
 ```
 
+### Error Reporting Middleware
+
+Catch exceptions and report to an error tracking service:
+
+```python
+class ErrorReportingMiddleware(Middleware):
+    async def __call__(self, event: AnyEvent, next: NextFunc) -> AnyResponse:
+        try:
+            return await next(event)
+        except Exception as e:
+            # Report to your error tracking service (Sentry, Datadog, etc.)
+            logger.exception("Unhandled error processing %s", event.type)
+            # sentry_sdk.capture_exception(e)
+            raise
+```
+
 ### Middleware with State
 
-Middleware can maintain state across requests:
+Middleware can maintain state across requests. This example tracks request rates per resource:
 
 ```python
 class RateLimitMiddleware(Middleware):
     def __init__(self, max_requests_per_minute=60):
         self.max_requests = max_requests_per_minute
-        self.requests = {}  # Track requests by resource_id
+        self.requests = {}
 
     async def __call__(self, event: AnyEvent, next: NextFunc) -> AnyResponse:
         current_time = time.time()
         resource_id = event.resource_id
 
-        # Clean old entries
         self.requests[resource_id] = [
             req_time for req_time in self.requests.get(resource_id, [])
             if current_time - req_time < 60
         ]
 
-        # Check rate limit
         if len(self.requests.get(resource_id, [])) >= self.max_requests:
             raise Exception(f"Rate limit exceeded for resource {resource_id}")
 
-        # Record this request
         self.requests.setdefault(resource_id, []).append(current_time)
-
         return await next(event)
 ```
 
-This comprehensive middleware system gives you the flexibility to add powerful cross-cutting concerns to your Frame.io integrations while keeping your handler code clean and focused.
+!!! note "Production rate limiting"
+    This in-memory example works for single-server deployments. For multiple workers or servers, use a shared store like Redis for rate limit state.

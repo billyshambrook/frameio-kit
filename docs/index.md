@@ -7,11 +7,11 @@ from frameio_kit import App, WebhookEvent, ActionEvent, Message
 
 app = App()
 
-@app.on_webhook("file.ready", secret="your-secret")
+@app.on_webhook("file.ready")
 async def on_file_ready(event: WebhookEvent):
     print(f"File is ready!")
 
-@app.on_action("my_app.analyze", name="Analyze File", description="Analyze this file", secret="your-secret")
+@app.on_action("my_app.analyze", name="Analyze File", description="Analyze this file")
 async def analyze_file(event: ActionEvent):
     return Message(title="Analysis Complete", description="File analyzed successfully!")
 ```

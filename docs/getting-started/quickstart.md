@@ -106,9 +106,19 @@ WEBHOOK_SECRET=your-webhook-secret-here
 
 ## Step 4: Run Your Application
 
+Export the environment variables and start the server:
+
 ```bash
+# Load environment variables
+export CUSTOM_ACTION_SECRET=your-action-secret-here
+export WEBHOOK_SECRET=your-webhook-secret-here
+
+# Start the server
 uvicorn main:app --reload
 ```
+
+!!! tip "Using a .env file"
+    The `.env` file you created in the previous step is for reference — `uvicorn` does not load it automatically. You can either export the variables manually as shown above, or use `uvicorn --env-file .env main:app --reload` to load them from the file.
 
 ## Step 5: Test Your Integration
 
@@ -143,6 +153,9 @@ Explore more features to build powerful integrations:
 - **[Client API](../guides/client-api.md)** - Make authenticated calls to Frame.io's API
 - **[Middleware](../guides/middleware.md)** - Add logging, metrics, and error handling
 - **[User Authentication](../guides/user-auth.md)** - Enable Adobe Login OAuth for user-specific actions
+
+!!! tip "Building for multiple workspaces?"
+    If you're building a product that will be installed across many Frame.io workspaces, the [Self-Service Installation](../guides/self-service-install.md) system handles webhook/action registration and secret management automatically — no manual configuration per workspace.
 
 ## Troubleshooting
 

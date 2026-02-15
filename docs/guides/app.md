@@ -161,6 +161,19 @@ This allows you to:
 4. **Test secret resolution** - Ensure resolvers work correctly before deploying
 5. **Monitor resolver performance** - Secret lookup happens on every request
 
+## Environment Variables
+
+frameio-kit uses the following environment variables. All are optional — each has an alternative configuration method.
+
+| Variable | Purpose | Alternative |
+|----------|---------|-------------|
+| `WEBHOOK_SECRET` | Default signing secret for webhooks | Pass `secret=` to `@app.on_webhook` |
+| `CUSTOM_ACTION_SECRET` | Default signing secret for custom actions | Pass `secret=` to `@app.on_action` |
+| `FRAMEIO_TOKEN` | Frame.io API token for `app.client` | Pass `token=` to `App()` |
+| `FRAMEIO_AUTH_ENCRYPTION_KEY` | Fernet key for encrypting stored tokens | Pass `encryption_key=` to `App()` |
+| `ADOBE_CLIENT_ID` | Adobe OAuth client ID | Pass via `OAuthConfig(client_id=)` |
+| `ADOBE_CLIENT_SECRET` | Adobe OAuth client secret | Pass via `OAuthConfig(client_secret=)` |
+
 ## See Also
 
 - [Mounting to Existing Apps](mounting.md) - Mount your App to FastAPI, Starlette, or any ASGI framework
