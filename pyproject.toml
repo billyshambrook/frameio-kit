@@ -3,7 +3,7 @@ name = "frameio_kit"
 version = "0.0.0"
 description = "A Python framework for building Frame.io apps"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = [
     "cryptography>=44.0.0",
     "frameio>=0.0.23",
@@ -16,7 +16,7 @@ dependencies = [
 license = "MIT"
 license-files = ["LICENSE"]
 classifiers = [
-	"Programming Language :: Python :: 3.13",
+	"Programming Language :: Python :: 3.14",
 	"Programming Language :: Python :: Implementation :: CPython",
 	"License :: OSI Approved :: MIT License",
 	"Operating System :: OS Independent",
@@ -81,8 +81,8 @@ asyncio_default_fixture_loop_scope = "session"
 asyncio_default_test_loop_scope = "session"
 
 [tool.ty.environment]
-python-version = "3.13"
+python-version = "3.14"
 
 [tool.ruff]
 line-length = 120
-target-version = "py313"
+target-version = "py314"
