@@ -79,6 +79,9 @@ class OAuthConfig(BaseModel):
             Set this explicitly when behind a reverse proxy or when the public URL
             differs from what the application sees. Must be registered in Adobe Console.
         scopes: List of OAuth scopes to request. Defaults to Frame.io API access.
+        ims_url: Base URL for Adobe IMS. Defaults to
+            ``https://ims-na1.adobelogin.com``. Override this to use a different
+            IMS environment (e.g., staging).
         token_refresh_buffer_seconds: Number of seconds before token expiration to
             trigger automatic refresh. Defaults to 300 seconds (5 minutes). This
             prevents token expiration during ongoing API calls.
