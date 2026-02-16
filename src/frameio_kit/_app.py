@@ -78,6 +78,22 @@ WebhookHandlerFunc = Callable[[WebhookEvent], Awaitable[None]]
 # It can return a Message, a Form for further input, or nothing.
 ActionHandlerFunc = Callable[[ActionEvent], Awaitable[AnyResponse]]
 
+# A callback invoked after a user completes OAuth triggered by a custom action.
+OnAuthCompleteFunc = Callable[["AuthCompleteContext"], Awaitable[Response | None]]
+
+
+@dataclass(frozen=True)
+class AuthCompleteContext:
+    """Context provided to on_auth_complete callbacks after successful OAuth.
+
+    Attributes:
+        event: The original ActionEvent that triggered the authentication
+            flow. This is the full event including resource, project,
+            workspace, user, and any form data.
+    """
+
+    event: ActionEvent
+
 
 @dataclass(frozen=True)
 class _BrandingConfig:
@@ -104,6 +120,7 @@ class _HandlerRegistration:
     model: type[AnyEvent] = field(default=WebhookEvent)
     require_user_auth: bool = False
     resource_types: frozenset[str] | None = None
+    on_auth_complete: OnAuthCompleteFunc | None = None
 
 
 class App:
@@ -385,6 +402,8 @@ class App:
                 invalid = reg.resource_types - VALID_RESOURCE_TYPES
                 if invalid:
                     errors.append(f"Action '{event_type}' has invalid resource type(s): {', '.join(sorted(invalid))}")
+            if reg.on_auth_complete and not reg.require_user_auth:
+                errors.append(f"Action '{event_type}' has on_auth_complete but require_user_auth is False")
 
         return errors
 
@@ -457,6 +476,7 @@ class App:
         secret: str | ActionSecretResolver | None = None,
         require_user_auth: bool = False,
         resource_type: ResourceType | Sequence[ResourceType] | None = None,
+        on_auth_complete: OnAuthCompleteFunc | None = None,
     ):
         """Decorator to register a function as a custom action handler.
 
@@ -508,6 +528,12 @@ class App:
                 framework automatically returns an informative ``Message`` to
                 the user if the resource type doesn't match. Defaults to
                 ``None`` (all types accepted).
+            on_auth_complete: Optional async callback invoked after a user
+                completes OAuth triggered by this action. Receives an
+                ``AuthCompleteContext`` with the original ``ActionEvent``.
+                Return a Starlette ``Response`` (e.g. ``RedirectResponse``)
+                to replace the default success page, or ``None`` to keep it.
+                Requires ``require_user_auth=True``.
 
         Raises:
             ValueError: If no secret source is available (no explicit secret,
@@ -537,6 +563,7 @@ class App:
                 model=ActionEvent,
                 require_user_auth=require_user_auth,
                 resource_types=normalized_resource_types,
+                on_auth_complete=on_auth_complete,
             )
             return func
 
@@ -614,6 +641,7 @@ class App:
             starlette_app.state.oauth_config = self._oauth_config
             starlette_app.state.oauth_client = self._oauth_manager.oauth_client
             starlette_app.state.state_serializer = self._oauth_manager.state_serializer
+            starlette_app.state._action_handlers = self._action_handlers
 
             # Set up auth template renderer for OAuth callback pages
             from ._auth_templates import AuthTemplateRenderer
@@ -637,7 +665,7 @@ class App:
         """Finds the registered handler for a given event type."""
         return self._webhook_handlers.get(event_type) or self._action_handlers.get(event_type)
 
-    def _create_login_form(self, event: ActionEvent, request: Request) -> Form:
+    async def _create_login_form(self, event: ActionEvent, request: Request) -> Form:
         """Create a Form prompting the user to authenticate.
 
         Args:
@@ -659,6 +687,16 @@ class App:
 
         if event.interaction_id:
             login_url += f"&interaction_id={event.interaction_id}"
+
+        login_url += f"&action_type={event.type}"
+
+        # If the handler has on_auth_complete, persist the event so the
+        # callback endpoint can reconstruct the AuthCompleteContext later.
+        handler_reg = self._action_handlers.get(event.type)
+        if handler_reg and handler_reg.on_auth_complete and self._oauth_manager:
+            storage = self._oauth_manager.token_manager.storage
+            storage_key = f"pending_auth:{event.user_id}:{event.interaction_id}"
+            await storage.put(storage_key, event.model_dump(), ttl=600)
 
         return Form(
             title="Authentication Required",
@@ -702,7 +740,7 @@ class App:
         user_token_data = await self._oauth_manager.token_manager.get_token(event.user_id)
         if not user_token_data:
             # User not authenticated - return login form
-            return self._create_login_form(event, request), None
+            return await self._create_login_form(event, request), None
 
         # Set user token in request context (not on event to prevent accidental logging)
         token = _user_token_context.set(user_token_data.access_token)

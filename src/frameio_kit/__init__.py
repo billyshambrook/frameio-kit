@@ -1,6 +1,8 @@
 from ._app import (
     ActionHandlerFunc,
     App,
+    AuthCompleteContext,
+    OnAuthCompleteFunc,
     WebhookHandlerFunc,
 )
 from ._client import Client
@@ -42,6 +44,8 @@ __all__ = [
     # _app.py
     "ActionHandlerFunc",
     "App",
+    "AuthCompleteContext",
+    "OnAuthCompleteFunc",
     "WebhookHandlerFunc",
     # _client.py
     "Client",

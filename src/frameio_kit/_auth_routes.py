@@ -24,11 +24,13 @@ class OAuthStateData(TypedDict):
         user_id: Frame.io user ID initiating the auth flow.
         interaction_id: Optional interaction ID for multi-step flows.
         redirect_url: OAuth redirect URL to use for the callback.
+        action_type: Optional action type that triggered the auth flow.
     """
 
     user_id: str
     interaction_id: str | None
     redirect_url: str
+    action_type: str | None
 
 
 async def _login_endpoint(request: Request) -> RedirectResponse | HTMLResponse:
@@ -51,6 +53,7 @@ async def _login_endpoint(request: Request) -> RedirectResponse | HTMLResponse:
     # Extract user context from query params
     user_id = request.query_params.get("user_id")
     interaction_id = request.query_params.get("interaction_id")
+    action_type = request.query_params.get("action_type")
 
     if not user_id:
         return HTMLResponse(
@@ -69,6 +72,7 @@ async def _login_endpoint(request: Request) -> RedirectResponse | HTMLResponse:
         "user_id": user_id,
         "interaction_id": interaction_id,
         "redirect_url": redirect_url,
+        "action_type": action_type,
     }
     state = state_serializer.dumps(state_data)
 
@@ -144,6 +148,37 @@ async def _callback_endpoint(request: Request) -> HTMLResponse:
         # Exchange code for tokens using the same redirect URL
         token_data = await oauth_client.exchange_code(code, redirect_url)
         await token_manager.store_token(user_id, token_data)
+
+        # Check for on_auth_complete callback
+        action_type = state_data.get("action_type")
+        if action_type:
+            try:
+                action_handlers = getattr(request.app.state, "_action_handlers", {})
+                handler_reg = action_handlers.get(action_type)
+                if handler_reg and handler_reg.on_auth_complete:
+                    interaction_id = state_data.get("interaction_id")
+                    storage = token_manager.storage
+                    storage_key = f"pending_auth:{user_id}:{interaction_id}"
+                    event_data = await storage.get(storage_key)
+                    if event_data:
+                        await storage.delete(storage_key)
+                        from ._app import AuthCompleteContext
+                        from ._events import ActionEvent
+
+                        event = ActionEvent.model_validate(event_data)
+                        ctx = AuthCompleteContext(event=event)
+                        result = await handler_reg.on_auth_complete(ctx)
+                        if result is not None:
+                            return result
+                    else:
+                        logger.warning(
+                            "Stored event not found for pending_auth:%s:%s "
+                            "(may have expired); falling through to default success page",
+                            user_id,
+                            interaction_id,
+                        )
+            except Exception:
+                logger.exception("on_auth_complete callback failed; falling through to default success page")
 
         return HTMLResponse(renderer.render_success())
     except Exception:
