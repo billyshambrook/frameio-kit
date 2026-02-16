@@ -400,5 +400,8 @@ async def on_analyze(event: ActionEvent):
     ...
 ```
 
+!!! tip
+    [`get_user_token()`](../reference/api.md#frameio_kit.get_user_token) is available inside the callback, so you can make authenticated API calls immediately after the user completes OAuth.
+
 !!! note
     `on_auth_complete` requires `require_user_auth=True`. Setting it without user auth will be caught by `validate_configuration()`.

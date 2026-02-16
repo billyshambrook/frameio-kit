@@ -231,6 +231,41 @@ class TestCallbackOnAuthComplete:
         assert ctx.event.user_id == "user_789"
         assert ctx.event.resource_id == "file_123"
 
+    async def test_get_user_token_available_in_callback(self, storage, token_manager, state_serializer, oauth_client):
+        """Test that get_user_token() works inside the on_auth_complete callback."""
+        from frameio_kit import get_user_token
+
+        captured_token = []
+
+        async def capture_token(ctx: AuthCompleteContext):
+            captured_token.append(get_user_token())
+            return None
+
+        handler_reg = _HandlerRegistration(
+            func=AsyncMock(),
+            name="Transcribe",
+            description="Transcribe file",
+            model=ActionEvent,
+            require_user_auth=True,
+            on_auth_complete=capture_token,
+        )
+        action_handlers = {"my_app.transcribe": handler_reg}
+
+        app = _make_test_app(token_manager, state_serializer, oauth_client, action_handlers)
+
+        await storage.put("pending_auth:user_789:int_456", _ACTION_EVENT_DATA, ttl=600)
+
+        state = _make_state(state_serializer, action_type="my_app.transcribe")
+
+        with _mock_token_exchange():
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+                response = await client.get("/auth/callback", params={"code": "auth_code", "state": state})
+
+        assert response.status_code == 200
+        assert len(captured_token) == 1
+        # The mock exchange_code returns a MagicMock; access_token is set on _user_token_context
+        assert captured_token[0] is not None
+
     async def test_callback_returns_none_falls_through_to_success(
         self, storage, token_manager, state_serializer, oauth_client
     ):

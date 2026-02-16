@@ -12,6 +12,7 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse
 from starlette.routing import Route
 
+from ._context import _user_token_context
 from ._oauth import AdobeOAuthClient, OAuthConfig, StateSerializer, TokenManager, get_oauth_redirect_url
 
 logger = logging.getLogger(__name__)
@@ -167,7 +168,11 @@ async def _callback_endpoint(request: Request) -> HTMLResponse:
 
                         event = ActionEvent.model_validate(event_data)
                         ctx = AuthCompleteContext(event=event)
-                        result = await handler_reg.on_auth_complete(ctx)
+                        token_ctx = _user_token_context.set(token_data.access_token)
+                        try:
+                            result = await handler_reg.on_auth_complete(ctx)
+                        finally:
+                            _user_token_context.reset(token_ctx)
                         if result is not None:
                             return result
                     else:
