@@ -68,6 +68,7 @@ async def transcribe_file(event: ActionEvent):
 - [`name`](../reference/api.md#frameio_kit.App.on_action\(name\)) *(str)*: Display name in Frame.io UI
 - [`description`](../reference/api.md#frameio_kit.App.on_action\(description\)) *(str)*: Description shown in UI
 - [`secret`](../reference/api.md#frameio_kit.App.on_action\(secret\)) *(str | None, optional)*: Signing secret from Frame.io. If not provided, falls back to the `CUSTOM_ACTION_SECRET` environment variable. Explicit parameter takes precedence over environment variable.
+- [`resource_type`](../reference/api.md#frameio_kit.App.on_action\(resource_type\)) *(str | list[str] | None, optional)*: Restrict this action to specific resource types. Accepts `"file"`, `"folder"`, or `"version_stack"` — a single string or a list. When the resource type doesn't match, a Message is returned to the user automatically. Defaults to `None` (all types accepted).
 - [`require_user_auth`](../reference/api.md#frameio_kit.App.on_action\(require_user_auth\)) *(bool, optional)*: Require user to authenticate via Adobe Login OAuth. When `True`, users must sign in before the action executes. See [User Authentication](user-auth.md) for details.
 
 !!! note "Environment Variables"
@@ -87,6 +88,32 @@ async def handler(event: ActionEvent):
     print(event.resource_id)    # "abc123"
     print(event.user.id)        # "user_789"
     print(event.data)           # None (first call) or dict (form submission)
+```
+
+## Filtering by Resource Type
+
+Use the `resource_type` parameter to restrict an action to specific resource types. When a user triggers the action on a non-matching resource, they see an informative message automatically — no manual checking needed in your handler.
+
+```python
+# Only available for files
+@app.on_action(
+    event_type="my_app.transcribe",
+    name="Transcribe",
+    description="Transcribe this file",
+    resource_type="file",
+)
+async def transcribe(event: ActionEvent):
+    ...
+
+# Available for files and version stacks
+@app.on_action(
+    event_type="my_app.analyze",
+    name="Analyze",
+    description="Analyze this asset",
+    resource_type=["file", "version_stack"],
+)
+async def analyze(event: ActionEvent):
+    ...
 ```
 
 ## Response Types

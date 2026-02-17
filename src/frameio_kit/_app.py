@@ -33,7 +33,8 @@ import functools
 import logging
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import Awaitable, Callable, cast
+from collections.abc import Sequence
+from typing import Awaitable, Callable, cast, get_args
 
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -44,7 +45,7 @@ from starlette.types import Receive, Scope, Send
 from ._auth_routes import create_auth_routes
 from ._client import Client
 from ._context import _install_config_context, _user_token_context
-from ._events import ActionEvent, AnyEvent, WebhookEvent
+from ._events import ActionEvent, AnyEvent, ResourceType, WebhookEvent
 from ._exceptions import (
     ConfigurationError,
     EventValidationError,
@@ -66,6 +67,8 @@ from ._secret_resolver import (
 from ._storage import Storage
 
 logger = logging.getLogger(__name__)
+
+VALID_RESOURCE_TYPES: frozenset[str] = frozenset(get_args(ResourceType))
 
 # A handler for a standard webhook, which is non-interactive.
 # It can only return a Message or nothing.
@@ -100,6 +103,7 @@ class _HandlerRegistration:
     description: str | None = None
     model: type[AnyEvent] = field(default=WebhookEvent)
     require_user_auth: bool = False
+    resource_types: frozenset[str] | None = None
 
 
 class App:
@@ -377,6 +381,10 @@ class App:
         for event_type, reg in self._action_handlers.items():
             if reg.require_user_auth and not self._oauth_manager:
                 errors.append(f"Action '{event_type}' requires user auth but OAuth not configured")
+            if reg.resource_types:
+                invalid = reg.resource_types - VALID_RESOURCE_TYPES
+                if invalid:
+                    errors.append(f"Action '{event_type}' has invalid resource type(s): {', '.join(sorted(invalid))}")
 
         return errors
 
@@ -448,6 +456,7 @@ class App:
         description: str,
         secret: str | ActionSecretResolver | None = None,
         require_user_auth: bool = False,
+        resource_type: ResourceType | Sequence[ResourceType] | None = None,
     ):
         """Decorator to register a function as a custom action handler.
 
@@ -493,6 +502,12 @@ class App:
             require_user_auth: If True, requires user to authenticate via Adobe
                 Login OAuth before executing the handler. OAuth must be configured
                 in App initialization for this to work.
+            resource_type: Restrict this action to specific resource types.
+                Accepts a single string (``"file"``, ``"folder"``, or
+                ``"version_stack"``) or a sequence of strings. When set, the
+                framework automatically returns an informative ``Message`` to
+                the user if the resource type doesn't match. Defaults to
+                ``None`` (all types accepted).
 
         Raises:
             ValueError: If no secret source is available (no explicit secret,
@@ -504,6 +519,15 @@ class App:
                 secret, "CUSTOM_ACTION_SECRET", "Custom action", self._secret_resolver
             )
 
+            if isinstance(resource_type, str):
+                normalized_resource_types = frozenset({resource_type})
+            elif resource_type is not None:
+                normalized_resource_types = frozenset(resource_type)
+                if not normalized_resource_types:
+                    raise ValueError("resource_type must not be an empty sequence.")
+            else:
+                normalized_resource_types = None
+
             self._action_handlers[event_type] = _HandlerRegistration(
                 func=func,
                 secret=static_secret,
@@ -512,6 +536,7 @@ class App:
                 description=description,
                 model=ActionEvent,
                 require_user_auth=require_user_auth,
+                resource_types=normalized_resource_types,
             )
             return func
 
@@ -739,6 +764,16 @@ class App:
             await self._request_handler.verify(request.headers, body, resolved_secret)
         except SignatureVerificationError:
             return Response("Invalid signature.", status_code=401)
+
+        # Check resource type filter for action events
+        if handler_reg.resource_types and isinstance(event, ActionEvent):
+            if event.resource.type not in handler_reg.resource_types:
+                types_str = ", ".join(sorted(handler_reg.resource_types))
+                msg = Message(
+                    title="Action Not Available",
+                    description=f"This action is only available for: {types_str}.",
+                )
+                return JSONResponse(msg.model_dump(exclude_none=True))
 
         # Set install config in context if available
         config_ctx_token = None
