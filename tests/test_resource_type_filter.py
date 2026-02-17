@@ -194,6 +194,23 @@ async def test_no_resource_type_accepts_all(sample_secret, create_valid_signatur
     assert len(call_log) == 3
 
 
+def test_empty_resource_type_list_raises_error(sample_secret):
+    """Passing resource_type=[] should raise ValueError at decorator time."""
+    app = App()
+
+    with pytest.raises(ValueError, match="resource_type must not be an empty sequence"):
+
+        @app.on_action(
+            "my_app.bad",
+            name="Bad",
+            description="Bad action",
+            secret=sample_secret,
+            resource_type=[],
+        )
+        async def handler(event: ActionEvent):
+            pass
+
+
 def test_validate_configuration_catches_invalid_resource_type(sample_secret, monkeypatch):
     """validate_configuration() should report invalid resource type strings."""
     monkeypatch.setenv("CUSTOM_ACTION_SECRET", sample_secret)

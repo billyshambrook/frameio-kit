@@ -523,6 +523,8 @@ class App:
                 normalized_resource_types = frozenset({resource_type})
             elif resource_type is not None:
                 normalized_resource_types = frozenset(resource_type)
+                if not normalized_resource_types:
+                    raise ValueError("resource_type must not be an empty sequence.")
             else:
                 normalized_resource_types = None
 
