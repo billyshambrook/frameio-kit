@@ -18,7 +18,7 @@ Adherence to this stack is mandatory. Do not introduce new tools without a forma
 
 | Category | Tool | Configuration & Notes |
 | :---- | :---- | :---- |
-| **Python Version** | **3.13+** | Utilize modern language features such as the \` |
+| **Python Version** | **3.14+** | Utilize modern language features such as the \` |
 | **Dependency Mgmt** | **uv** | Use uv pip compile and uv pip sync for fast, deterministic dependency resolution. All dependencies must be defined in pyproject.toml. Do not use requirements.txt for the library itself. |
 | **Linting & Formatting** | **Ruff** | A single, high-performance tool for both linting and formatting. Configure ruff.toml to enforce strict rules, including isort for import sorting. The code base must be 100% compliant with ruff check and ruff format. |
 | **Type Checking** | **ty** | Configure in pyproject.toml under `[tool.ty]`. |
@@ -139,6 +139,28 @@ The SDK follows a modular architecture with clear separation of concerns:
 3. **Use Custom Exceptions**: Prefer specific exception types over generic ones
 4. **Fail Fast**: Validate at startup when possible, not at request time
 
+## **🆕 Recent Features**
+
+### Resource Type Filtering (`on_action` `resource_type` parameter)
+
+Custom actions can be restricted to specific resource types using the `resource_type` parameter on `@app.on_action()`.
+
+- **`ResourceType`** — `Literal["file", "folder", "version_stack"]` defined in `_events.py`, exported from `__init__.py`
+- Accepts a single string or a sequence of strings; normalized to `frozenset[str]` internally (`_HandlerRegistration.resource_types`)
+- An empty sequence raises `ValueError` at decorator time
+- Invalid resource types are caught during `App.validate()` against `VALID_RESOURCE_TYPES`
+- At request time, if the event's `resource.type` is not in the allowed set, the handler returns a user-facing `Message` instead of invoking the callback
+
+### `on_auth_complete` Callback (`on_action` `on_auth_complete` parameter)
+
+Custom actions that require OAuth (`require_user_auth=True`) can provide a callback invoked after the user completes authentication.
+
+- **`OnAuthCompleteFunc`** — `Callable[[AuthCompleteContext], Awaitable[Response | None]]` defined in `_app.py`, exported from `__init__.py`
+- **`AuthCompleteContext`** — frozen dataclass holding the original `ActionEvent` that triggered the auth flow (`_app.py`, exported from `__init__.py`)
+- Return a Starlette `Response` (e.g. `RedirectResponse`) to replace the default success page, or `None` to keep it
+- The original event is persisted in storage keyed by `pending_auth:{user_id}:{interaction_id}` and retrieved in `_auth_routes.py` after token exchange
+- User token context is set before the callback is invoked, so `get_user_token()` works inside the callback
+
 ## **⚠️ Common Pitfalls to Avoid**
 
 ### Never Use Mutable Default Arguments
@@ -172,6 +194,7 @@ class OAuthStateData(TypedDict):
     user_id: str
     interaction_id: str | None
     redirect_url: str
+    action_type: str | None
 
 state_data: OAuthStateData = {"user_id": user_id, ...}
 ```

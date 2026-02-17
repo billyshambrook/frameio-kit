@@ -88,8 +88,39 @@ async def process_file(event: ActionEvent):
 3. If not authenticated, user sees "Sign in with Adobe" button
 4. User authorizes your app via Adobe Login
 5. Tokens are encrypted and stored
-6. Handler retrieves token via `get_user_token()`
-7. Tokens automatically refresh when expired
+6. If `on_auth_complete` is set on the action, it runs with the original event context — optionally returning a custom redirect
+7. Handler retrieves token via `get_user_token()`
+8. Tokens automatically refresh when expired
+
+## Post-Authentication Hook
+
+You can run custom logic after a user completes OAuth by setting `on_auth_complete` on the action. The callback receives an [`AuthCompleteContext`](../reference/api.md#frameio_kit.AuthCompleteContext) containing the original [`ActionEvent`](../reference/api.md#frameio_kit.ActionEvent) that triggered the auth flow. Return a Starlette `Response` to replace the default success page, or `None` to keep it.
+
+```python
+from starlette.responses import RedirectResponse, Response
+from frameio_kit import App, ActionEvent, AuthCompleteContext, OAuthConfig
+
+app = App(oauth=OAuthConfig(client_id="...", client_secret="..."))
+
+async def redirect_after_auth(ctx: AuthCompleteContext) -> Response:
+    return RedirectResponse(
+        f"https://myapp.com/setup?resource={ctx.event.resource_id}"
+    )
+
+@app.on_action(
+    "my_app.transcribe",
+    name="Transcribe",
+    description="Transcribe file",
+    require_user_auth=True,
+    on_auth_complete=redirect_after_auth,
+)
+async def on_transcribe(event: ActionEvent):
+    ...
+```
+
+The original event is stored temporarily in the storage backend during the OAuth flow (with a 10-minute TTL matching the state token expiry) and cleaned up after the callback runs.
+
+For more examples, see [Custom Actions — Post-Authentication Callback](custom-actions.md#post-authentication-callback).
 
 ## Configuration
 
