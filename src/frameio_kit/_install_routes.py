@@ -48,7 +48,7 @@ async def _get_session(request: Request) -> InstallSession | None:
     # Verify the signed cookie
     try:
         cookie_data = state_serializer.loads(session_cookie, max_age=session_ttl)
-    except (SignatureExpired, BadSignature):
+    except SignatureExpired, BadSignature:
         return None
 
     session_key = cookie_data.get("session_key")
@@ -221,7 +221,7 @@ async def _install_callback(request: Request) -> Response:
 
     try:
         state_data = state_serializer.loads(state)
-    except (SignatureExpired, BadSignature):
+    except SignatureExpired, BadSignature:
         return HTMLResponse(
             "<h1>Invalid or Expired State</h1><p>Please try again.</p>",
             status_code=400,
@@ -562,7 +562,7 @@ async def _install_logout(request: Request) -> Response:
             session_key = cookie_data.get("session_key")
             if session_key:
                 await manager.storage.delete(f"install_session:{session_key}")
-        except (SignatureExpired, BadSignature):
+        except SignatureExpired, BadSignature:
             pass
 
     install_base = _install_path(request)

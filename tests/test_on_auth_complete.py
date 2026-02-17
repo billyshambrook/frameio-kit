@@ -114,7 +114,7 @@ class _MockTokenExchange:
         self._exchange_patch = patch(
             "frameio_kit._oauth.AdobeOAuthClient.exchange_code",
             new_callable=AsyncMock,
-            return_value=MagicMock(),  # Return a mock TokenData-like object
+            return_value=MagicMock(access_token="test_token"),
         )
         self._store_patch = patch(
             "frameio_kit._oauth.TokenManager.store_token",
@@ -263,8 +263,7 @@ class TestCallbackOnAuthComplete:
 
         assert response.status_code == 200
         assert len(captured_token) == 1
-        # The mock exchange_code returns a MagicMock; access_token is set on _user_token_context
-        assert captured_token[0] is not None
+        assert captured_token[0] == "test_token"
 
     async def test_callback_returns_none_falls_through_to_success(
         self, storage, token_manager, state_serializer, oauth_client

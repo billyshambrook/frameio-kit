@@ -9,7 +9,7 @@ from typing import TypedDict
 
 from itsdangerous import BadSignature, SignatureExpired
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, RedirectResponse
+from starlette.responses import HTMLResponse, RedirectResponse, Response
 from starlette.routing import Route
 
 from ._context import _user_token_context
@@ -40,6 +40,7 @@ async def _login_endpoint(request: Request) -> RedirectResponse | HTMLResponse:
     Query parameters:
         user_id: Frame.io user ID (required)
         interaction_id: Frame.io interaction ID for multi-step flows (optional)
+        action_type: Custom action event type for on_auth_complete callback routing (optional)
 
     Returns:
         Redirect to Adobe IMS authorization page.
@@ -82,7 +83,7 @@ async def _login_endpoint(request: Request) -> RedirectResponse | HTMLResponse:
     return RedirectResponse(auth_url)
 
 
-async def _callback_endpoint(request: Request) -> HTMLResponse:
+async def _callback_endpoint(request: Request) -> HTMLResponse | Response:
     """Handle OAuth callback from Adobe IMS.
 
     Query parameters:

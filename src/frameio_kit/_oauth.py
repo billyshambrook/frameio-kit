@@ -245,7 +245,7 @@ class AdobeOAuthClient:
             expires_in = DEFAULT_TOKEN_EXPIRES_SECONDS
         try:
             expires_in = int(expires_in)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             raise TokenExchangeError(f"Invalid 'expires_in' value: {expires_in}")
         if expires_in <= 0:
             raise TokenExchangeError(f"'expires_in' must be positive, got: {expires_in}")
