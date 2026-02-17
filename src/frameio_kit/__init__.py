@@ -5,7 +5,7 @@ from ._app import (
 )
 from ._client import Client
 from ._context import get_install_config, get_user_token
-from ._events import Account, ActionEvent, AnyEvent, Project, Resource, User, WebhookEvent, Workspace
+from ._events import Account, ActionEvent, AnyEvent, Project, Resource, ResourceType, User, WebhookEvent, Workspace
 from ._exceptions import (
     ConfigurationError,
     EventValidationError,
@@ -53,6 +53,7 @@ __all__ = [
     "ActionEvent",
     "Project",
     "Resource",
+    "ResourceType",
     "User",
     "WebhookEvent",
     "Workspace",

@@ -17,6 +17,10 @@ from typing import Any, Literal
 from pydantic import BaseModel, computed_field
 
 
+ResourceType = Literal["file", "folder", "version_stack"]
+"""The possible types for a Frame.io resource."""
+
+
 class Resource(BaseModel):
     """Represents the primary resource that an event pertains to.
 
@@ -26,7 +30,7 @@ class Resource(BaseModel):
     """
 
     id: str
-    type: Literal["file", "folder", "version_stack"]
+    type: ResourceType
 
 
 class Project(BaseModel):
