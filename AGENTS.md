@@ -158,7 +158,7 @@ Custom actions that require OAuth (`require_user_auth=True`) can provide a callb
 - **`OnAuthCompleteFunc`** — `Callable[[AuthCompleteContext], Awaitable[Response | None]]` defined in `_app.py`, exported from `__init__.py`
 - **`AuthCompleteContext`** — frozen dataclass holding the original `ActionEvent` that triggered the auth flow (`_app.py`, exported from `__init__.py`)
 - Return a Starlette `Response` (e.g. `RedirectResponse`) to replace the default success page, or `None` to keep it
-- The original event is persisted in storage keyed by `action_event:{interaction_id}` and retrieved in `_auth_routes.py` after token exchange
+- The original event is persisted in storage keyed by `pending_auth:{user_id}:{interaction_id}` and retrieved in `_auth_routes.py` after token exchange
 - User token context is set before the callback is invoked, so `get_user_token()` works inside the callback
 
 ## **⚠️ Common Pitfalls to Avoid**
