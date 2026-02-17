@@ -158,30 +158,33 @@ async def _callback_endpoint(request: Request) -> HTMLResponse:
                 handler_reg = action_handlers.get(action_type)
                 if handler_reg and handler_reg.on_auth_complete:
                     interaction_id = state_data.get("interaction_id")
-                    storage = token_manager.storage
-                    storage_key = f"pending_auth:{user_id}:{interaction_id}"
-                    event_data = await storage.get(storage_key)
-                    if event_data:
-                        await storage.delete(storage_key)
-                        from ._app import AuthCompleteContext
-                        from ._events import ActionEvent
-
-                        event = ActionEvent.model_validate(event_data)
-                        ctx = AuthCompleteContext(event=event)
-                        token_ctx = _user_token_context.set(token_data.access_token)
-                        try:
-                            result = await handler_reg.on_auth_complete(ctx)
-                        finally:
-                            _user_token_context.reset(token_ctx)
-                        if result is not None:
-                            return result
+                    if interaction_id is None:
+                        logger.warning("on_auth_complete skipped: interaction_id missing from OAuth state")
                     else:
-                        logger.warning(
-                            "Stored event not found for pending_auth:%s:%s "
-                            "(may have expired); falling through to default success page",
-                            user_id,
-                            interaction_id,
-                        )
+                        storage = token_manager.storage
+                        storage_key = f"pending_auth:{user_id}:{interaction_id}"
+                        event_data = await storage.get(storage_key)
+                        if event_data:
+                            await storage.delete(storage_key)
+                            from ._app import AuthCompleteContext
+                            from ._events import ActionEvent
+
+                            event = ActionEvent.model_validate(event_data)
+                            ctx = AuthCompleteContext(event=event)
+                            token_ctx = _user_token_context.set(token_data.access_token)
+                            try:
+                                result = await handler_reg.on_auth_complete(ctx)
+                            finally:
+                                _user_token_context.reset(token_ctx)
+                            if result is not None:
+                                return result
+                        else:
+                            logger.warning(
+                                "Stored event not found for pending_auth:%s:%s "
+                                "(may have expired); falling through to default success page",
+                                user_id,
+                                interaction_id,
+                            )
             except Exception:
                 logger.exception("on_auth_complete callback failed; falling through to default success page")
 
