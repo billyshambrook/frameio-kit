@@ -293,6 +293,34 @@ class TestCallbackOnAuthComplete:
         assert response.status_code == 200
         callback.assert_called_once()
 
+    async def test_callback_non_response_return_falls_through_to_success(
+        self, storage, token_manager, state_serializer, oauth_client
+    ):
+        """Test callback returning a non-Response value falls through to default success page."""
+        callback = AsyncMock(return_value="not a response")
+        handler_reg = _HandlerRegistration(
+            func=AsyncMock(),
+            name="Transcribe",
+            description="Transcribe file",
+            model=ActionEvent,
+            require_user_auth=True,
+            on_auth_complete=callback,
+        )
+        action_handlers = {"my_app.transcribe": handler_reg}
+
+        app = _make_test_app(token_manager, state_serializer, oauth_client, action_handlers)
+
+        await storage.put("pending_auth:user_789:int_456", _ACTION_EVENT_DATA, ttl=600)
+
+        state = _make_state(state_serializer, action_type="my_app.transcribe")
+
+        with _mock_token_exchange():
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+                response = await client.get("/auth/callback", params={"code": "auth_code", "state": state})
+
+        assert response.status_code == 200
+        callback.assert_called_once()
+
     async def test_callback_exception_falls_through_to_success(
         self, storage, token_manager, state_serializer, oauth_client
     ):

@@ -177,8 +177,14 @@ async def _callback_endpoint(request: Request) -> HTMLResponse | Response:
                                 result = await handler_reg.on_auth_complete(ctx)
                             finally:
                                 _user_token_context.reset(token_ctx)
-                            if result is not None:
+                            if isinstance(result, Response):
                                 return result
+                            if result is not None:
+                                logger.warning(
+                                    "on_auth_complete returned non-Response value %r; "
+                                    "falling through to default success page",
+                                    type(result),
+                                )
                         else:
                             logger.warning(
                                 "Stored event not found for pending_auth:%s:%s "
