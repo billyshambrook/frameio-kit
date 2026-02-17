@@ -181,7 +181,7 @@ async def _callback_endpoint(request: Request) -> HTMLResponse | Response:
                                 return result
                             if result is not None:
                                 logger.warning(
-                                    "on_auth_complete returned non-Response value %r; "
+                                    "on_auth_complete returned non-Response value of type %r; "
                                     "falling through to default success page",
                                     type(result),
                                 )
