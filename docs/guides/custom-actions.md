@@ -70,7 +70,7 @@ async def transcribe_file(event: ActionEvent):
 - [`secret`](../reference/api.md#frameio_kit.App.on_action\(secret\)) *(str | None, optional)*: Signing secret from Frame.io. If not provided, falls back to the `CUSTOM_ACTION_SECRET` environment variable. Explicit parameter takes precedence over environment variable.
 - [`resource_type`](../reference/api.md#frameio_kit.App.on_action\(resource_type\)) *(str | list[str] | None, optional)*: Restrict this action to specific resource types. Accepts `"file"`, `"folder"`, or `"version_stack"` — a single string or a list. When the resource type doesn't match, a Message is returned to the user automatically. Defaults to `None` (all types accepted).
 - [`require_user_auth`](../reference/api.md#frameio_kit.App.on_action\(require_user_auth\)) *(bool, optional)*: Require user to authenticate via Adobe Login OAuth. When `True`, users must sign in before the action executes. See [User Authentication](user-auth.md) for details.
-- [`on_auth_complete`](../reference/api.md#frameio_kit.App.on_action\(on_auth_complete\)) *(async callable, optional)*: Async callback invoked after a user completes OAuth triggered by this action. Receives an [`AuthCompleteContext`](../reference/api.md#frameio_kit.AuthCompleteContext) with the original [`ActionEvent`](../reference/api.md#frameio_kit.ActionEvent). Return a Starlette `Response` (e.g., `RedirectResponse`) to replace the default success page, or `None` to keep it. Requires `require_user_auth=True`.
+- [`on_auth_complete`](../reference/api.md#frameio_kit.App.on_action\(on_auth_complete\)) *(async callable, optional)*: Async callback invoked after a user completes OAuth triggered by this action. Receives an [`AuthCompleteContext`](../reference/api.md#frameio_kit.AuthCompleteContext) with the original [`ActionEvent`](../reference/api.md#frameio_kit.ActionEvent). Return a `Response` (e.g., `RedirectResponse`) to replace the default success page, or `None` to keep it. Requires `require_user_auth=True`.
 
 !!! note "Environment Variables"
     **Single action:** Use the default `CUSTOM_ACTION_SECRET` environment variable and omit the `secret` parameter.
@@ -326,6 +326,32 @@ async def process_file(event: ActionEvent):
    - Secret: Copy the generated secret to your environment variables
 4. **Test the action** by right-clicking on an asset
 
+## Accessing the Request Object
+
+Use [`get_request()`](../reference/api.md#frameio_kit.get_request) to access the underlying FastAPI `Request` inside any handler. This is useful for reading headers, client IP, cookies, or other HTTP-level details:
+
+```python
+from frameio_kit import App, ActionEvent, Message, get_request
+
+@app.on_action(
+    event_type="my_app.analyze",
+    name="Analyze File",
+    description="Analyze this file",
+)
+async def analyze_file(event: ActionEvent):
+    request = get_request()
+    client_ip = request.client.host
+    user_agent = request.headers.get("user-agent")
+
+    return Message(
+        title="Analyzed",
+        description=f"Request from {client_ip}"
+    )
+```
+
+!!! tip
+    `get_request()` is available in webhook and action handlers, and any code called from them (including the kit's `Middleware` classes). It is not available in FastAPI/Starlette HTTP middleware.
+
 ## Best Practices
 
 1. **Keep actions focused** - Each action should do one thing well
@@ -359,7 +385,7 @@ When an action requires user authentication (`require_user_auth=True`), you can 
 ### Redirecting After Auth
 
 ```python
-from starlette.responses import RedirectResponse, Response
+from fastapi.responses import RedirectResponse, Response
 from frameio_kit import App, ActionEvent, AuthCompleteContext, OAuthConfig
 
 app = App(oauth=OAuthConfig(client_id="...", client_secret="..."))

@@ -11,7 +11,7 @@ dependencies = [
     "httpx>=0.28.1",
     "itsdangerous>=2.2.0",
     "pydantic>=2.11.10",
-    "starlette>=0.48.0",
+    "fastapi>=0.115.0",
 ]
 license = "MIT"
 license-files = ["LICENSE"]
@@ -35,7 +35,7 @@ keywords = [
 	"webhooks",
 	"custom-actions",
 	"asgi",
-	"starlette",
+	"fastapi",
 	"async",
 	"asyncio",
 	"automation",
@@ -58,7 +58,6 @@ dev = [
     "zensical",
     "mkdocstrings-python>=1.18.2",
     "ty>=0.0.15",
-    "fastapi>=0.115.0",
     "aioboto3>=13.0.0",
     "jinja2>=3.1.0",
     "python-multipart>=0.0.18",

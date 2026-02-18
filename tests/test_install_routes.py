@@ -1,7 +1,7 @@
 """Tests for install route handlers."""
 
 import pytest
-from starlette.testclient import TestClient
+from fastapi.testclient import TestClient
 
 from frameio_kit._oauth import OAuthConfig
 from frameio_kit import App, InstallField
@@ -199,7 +199,7 @@ class TestAppInstallConfiguration:
 
     def test_install_routes_mounted(self, oauth_config):
         app = App(oauth=oauth_config, install=True, name="Test App")
-        routes = app._asgi_app.routes
+        routes = app._router.routes
         route_paths = [getattr(r, "path", None) for r in routes]
         assert "/install" in route_paths
         assert "/install/login" in route_paths
@@ -246,14 +246,14 @@ class TestAllowedAccounts:
         assert app._install_manager._allowed_accounts is None
 
 
-class TestFastAPIMount:
-    """Test that frameio-kit works when mounted inside a FastAPI app."""
+class TestFastAPIIncludeRouter:
+    """Test that frameio-kit works when included in a FastAPI app."""
 
-    def test_install_page_accessible_at_root_mount(self, app_with_handlers):
+    def test_install_page_accessible_at_root(self, app_with_handlers):
         from fastapi import FastAPI
 
         fastapi_app = FastAPI()
-        fastapi_app.mount("/", app_with_handlers)
+        fastapi_app.include_router(app_with_handlers.create_router())
 
         with TestClient(fastapi_app) as c:
             response = c.get("/install")
@@ -261,29 +261,29 @@ class TestFastAPIMount:
             assert "Test App" in response.text
             assert "file.ready" in response.text
 
-    def test_install_page_accessible_at_prefix_mount(self, app_with_handlers):
+    def test_install_page_accessible_at_prefix(self, app_with_handlers):
         from fastapi import FastAPI
 
         fastapi_app = FastAPI()
-        fastapi_app.mount("/frameio", app_with_handlers)
+        fastapi_app.include_router(app_with_handlers.create_router(), prefix="/frameio")
 
         with TestClient(fastapi_app) as c:
             response = c.get("/frameio/install")
             assert response.status_code == 200
             assert "Test App" in response.text
 
-    def test_auth_routes_accessible_when_mounted(self, app_with_handlers):
+    def test_auth_routes_accessible_when_included(self, app_with_handlers):
         from fastapi import FastAPI
 
         fastapi_app = FastAPI()
-        fastapi_app.mount("/", app_with_handlers)
+        fastapi_app.include_router(app_with_handlers.create_router())
 
         with TestClient(fastapi_app) as c:
             response = c.get("/auth/login", follow_redirects=False)
             # Route is reachable (not 404); 400 is expected without valid session state
             assert response.status_code != 404
 
-    def test_fastapi_routes_coexist_with_mount(self, app_with_handlers):
+    def test_fastapi_routes_coexist_with_include_router(self, app_with_handlers):
         from fastapi import FastAPI
 
         fastapi_app = FastAPI()
@@ -292,7 +292,7 @@ class TestFastAPIMount:
         async def health():
             return {"status": "healthy"}
 
-        fastapi_app.mount("/", app_with_handlers)
+        fastapi_app.include_router(app_with_handlers.create_router())
 
         with TestClient(fastapi_app) as c:
             # FastAPI route works
@@ -300,7 +300,7 @@ class TestFastAPIMount:
             assert response.status_code == 200
             assert response.json() == {"status": "healthy"}
 
-            # Mounted frameio-kit route works
+            # Included frameio-kit route works
             response = c.get("/install")
             assert response.status_code == 200
             assert "Test App" in response.text

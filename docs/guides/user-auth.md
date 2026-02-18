@@ -94,10 +94,10 @@ async def process_file(event: ActionEvent):
 
 ## Post-Authentication Hook
 
-You can run custom logic after a user completes OAuth by setting `on_auth_complete` on the action. The callback receives an [`AuthCompleteContext`](../reference/api.md#frameio_kit.AuthCompleteContext) containing the original [`ActionEvent`](../reference/api.md#frameio_kit.ActionEvent) that triggered the auth flow. Return a Starlette `Response` to replace the default success page, or `None` to keep it.
+You can run custom logic after a user completes OAuth by setting `on_auth_complete` on the action. The callback receives an [`AuthCompleteContext`](../reference/api.md#frameio_kit.AuthCompleteContext) containing the original [`ActionEvent`](../reference/api.md#frameio_kit.ActionEvent) that triggered the auth flow. Return a `Response` to replace the default success page, or `None` to keep it.
 
 ```python
-from starlette.responses import RedirectResponse, Response
+from fastapi.responses import RedirectResponse, Response
 from frameio_kit import App, ActionEvent, AuthCompleteContext, OAuthConfig
 
 app = App(oauth=OAuthConfig(client_id="...", client_secret="..."))

@@ -581,7 +581,7 @@ def _extract_mount_prefix(request) -> str:
     both auth routes and install routes.
 
     Args:
-        request: Starlette Request object.
+        request: Request object.
 
     Returns:
         The mount prefix string (empty string for root mount).
@@ -620,7 +620,7 @@ def infer_oauth_url(request, path: str) -> str:
     then constructs the specified OAuth path.
 
     Args:
-        request: Starlette Request object.
+        request: Request object.
         path: The OAuth path to construct (e.g., "/auth/login", "/auth/callback").
 
     Returns:
@@ -648,7 +648,7 @@ def infer_install_url(request, path: str = "") -> str:
     then constructs the specified path.
 
     Args:
-        request: Starlette Request object.
+        request: Request object.
         path: Optional path to append (e.g., "/install/callback").
 
     Returns:
@@ -674,7 +674,7 @@ def get_oauth_redirect_url(oauth_config: OAuthConfig, request) -> str:
 
     Args:
         oauth_config: OAuth configuration.
-        request: Starlette Request object.
+        request: Request object.
 
     Returns:
         Full URL to the OAuth callback endpoint.

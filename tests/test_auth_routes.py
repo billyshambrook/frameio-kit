@@ -1,14 +1,15 @@
 """Unit tests for OAuth authentication routes."""
 
 import pytest
-from starlette.applications import Starlette
-from starlette.testclient import TestClient
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 from frameio_kit._app import _BrandingConfig
 from frameio_kit._auth_routes import create_auth_routes
 from frameio_kit._auth_templates import AuthTemplateRenderer
 from frameio_kit._encryption import TokenEncryption
 from frameio_kit._oauth import OAuthConfig, StateSerializer, TokenManager
+from frameio_kit._state import _AppState, _state_dependency
 
 # Test secret key for StateSerializer
 TEST_SECRET_KEY = TokenEncryption.generate_key()
@@ -81,24 +82,27 @@ def oauth_client(oauth_config: OAuthConfig):
 @pytest.fixture
 def test_app(
     oauth_config: OAuthConfig, token_manager: TokenManager, oauth_client, state_serializer: StateSerializer
-) -> Starlette:
-    """Create test Starlette app with auth routes."""
-    app = Starlette()
-    app.state.oauth_config = oauth_config
-    app.state.token_manager = token_manager
-    app.state.oauth_client = oauth_client
-    app.state.state_serializer = state_serializer
-    app.state.auth_renderer = _TEST_AUTH_RENDERER
+) -> FastAPI:
+    """Create test FastAPI app with auth routes."""
+    app_state = _AppState(
+        branding=_TEST_BRANDING,
+        oauth_config=oauth_config,
+        oauth_client=oauth_client,
+        state_serializer=state_serializer,
+        token_manager=token_manager,
+        auth_renderer=_TEST_AUTH_RENDERER,
+    )
+    get_state = _state_dependency(app_state)
 
-    # Add auth routes
-    auth_routes = create_auth_routes()
-    app.routes.extend(auth_routes)
+    app = FastAPI()
+    router = create_auth_routes(get_state)
+    app.include_router(router)
 
     return app
 
 
 @pytest.fixture
-def client(test_app: Starlette) -> TestClient:
+def client(test_app: FastAPI) -> TestClient:
     """Create test client."""
     return TestClient(test_app)
 
@@ -171,21 +175,25 @@ class TestLoginEndpoint:
     def test_login_with_inferred_redirect_url_root_mount(
         self, oauth_config_no_redirect: OAuthConfig, token_manager: TokenManager, state_serializer: StateSerializer
     ):
-        """Test redirect URL inference for app mounted at root."""
+        """Test redirect URL inference for app at root."""
         from frameio_kit._oauth import AdobeOAuthClient
 
         # Create app without explicit redirect_url
-        app = Starlette()
-        app.state.oauth_config = oauth_config_no_redirect
-        app.state.token_manager = token_manager
-        app.state.oauth_client = AdobeOAuthClient(
-            client_id=oauth_config_no_redirect.client_id,
-            client_secret=oauth_config_no_redirect.client_secret,
+        app_state = _AppState(
+            branding=_TEST_BRANDING,
+            oauth_config=oauth_config_no_redirect,
+            oauth_client=AdobeOAuthClient(
+                client_id=oauth_config_no_redirect.client_id,
+                client_secret=oauth_config_no_redirect.client_secret,
+            ),
+            state_serializer=state_serializer,
+            token_manager=token_manager,
+            auth_renderer=_TEST_AUTH_RENDERER,
         )
-        app.state.state_serializer = state_serializer
-        app.state.auth_renderer = _TEST_AUTH_RENDERER
-        auth_routes = create_auth_routes()
-        app.routes.extend(auth_routes)
+        get_state = _state_dependency(app_state)
+
+        app = FastAPI()
+        app.include_router(create_auth_routes(get_state))
 
         with TestClient(app, base_url="https://testserver") as test_client:
             response = test_client.get("/auth/login", params={"user_id": "user_123"}, follow_redirects=False)
@@ -196,43 +204,42 @@ class TestLoginEndpoint:
             state = state_param.split("=")[1]
 
             state_data = state_serializer.loads(state)
-            # For root mount, path is /auth/login, mount_prefix is ""
+            # For root, path is /auth/login, mount_prefix is ""
             assert state_data["redirect_url"] == "https://testserver/auth/callback"
 
     def test_login_with_inferred_redirect_url_prefix_mount(
         self, oauth_config_no_redirect: OAuthConfig, token_manager: TokenManager, state_serializer: StateSerializer
     ):
-        """Test redirect URL inference for app mounted at prefix."""
+        """Test redirect URL inference for app at prefix."""
         from frameio_kit._oauth import AdobeOAuthClient
 
-        # Create main app and mount our auth app at /frameio
-        main_app = Starlette()
-        sub_app = Starlette()
-        sub_app.state.oauth_config = oauth_config_no_redirect
-        sub_app.state.token_manager = token_manager
-        sub_app.state.oauth_client = AdobeOAuthClient(
-            client_id=oauth_config_no_redirect.client_id,
-            client_secret=oauth_config_no_redirect.client_secret,
+        # Create main app and include auth router at /frameio prefix
+        app_state = _AppState(
+            branding=_TEST_BRANDING,
+            oauth_config=oauth_config_no_redirect,
+            oauth_client=AdobeOAuthClient(
+                client_id=oauth_config_no_redirect.client_id,
+                client_secret=oauth_config_no_redirect.client_secret,
+            ),
+            state_serializer=state_serializer,
+            token_manager=token_manager,
+            auth_renderer=_TEST_AUTH_RENDERER,
         )
-        sub_app.state.state_serializer = state_serializer
-        sub_app.state.auth_renderer = _TEST_AUTH_RENDERER
-        auth_routes = create_auth_routes()
-        sub_app.routes.extend(auth_routes)
+        get_state = _state_dependency(app_state)
 
-        from starlette.routing import Mount
+        app = FastAPI()
+        app.include_router(create_auth_routes(get_state), prefix="/frameio")
 
-        main_app.routes.append(Mount("/frameio", app=sub_app))
-
-        with TestClient(main_app, base_url="https://testserver") as test_client:
+        with TestClient(app, base_url="https://testserver") as test_client:
             response = test_client.get("/frameio/auth/login", params={"user_id": "user_123"}, follow_redirects=False)
 
-            # Extract state and verify inferred redirect_url includes mount prefix
+            # Extract state and verify inferred redirect_url includes prefix
             location = response.headers["location"]
             state_param = [p for p in location.split("&") if p.startswith("state=")][0]
             state = state_param.split("=")[1]
 
             state_data = state_serializer.loads(state)
-            # For /frameio mount, path is /frameio/auth/login, mount_prefix is /frameio
+            # For /frameio prefix, path is /frameio/auth/login, mount_prefix is /frameio
             assert state_data["redirect_url"] == "https://testserver/frameio/auth/callback"
 
 
@@ -329,17 +336,21 @@ class TestCallbackEndpoint:
             redirect_url=None,
         )
 
-        app = Starlette()
-        app.state.oauth_config = oauth_config_no_redirect
-        app.state.token_manager = token_manager
-        app.state.oauth_client = AdobeOAuthClient(
-            client_id=oauth_config_no_redirect.client_id,
-            client_secret=oauth_config_no_redirect.client_secret,
+        app_state = _AppState(
+            branding=_TEST_BRANDING,
+            oauth_config=oauth_config_no_redirect,
+            oauth_client=AdobeOAuthClient(
+                client_id=oauth_config_no_redirect.client_id,
+                client_secret=oauth_config_no_redirect.client_secret,
+            ),
+            state_serializer=state_serializer,
+            token_manager=token_manager,
+            auth_renderer=_TEST_AUTH_RENDERER,
         )
-        app.state.state_serializer = state_serializer
-        app.state.auth_renderer = _TEST_AUTH_RENDERER
-        auth_routes = create_auth_routes()
-        app.routes.extend(auth_routes)
+        get_state = _state_dependency(app_state)
+
+        app = FastAPI()
+        app.include_router(create_auth_routes(get_state))
 
         # Create state with a specific redirect_url
         custom_redirect_url = "https://custom.example.com/my/path/auth/callback"
@@ -363,24 +374,40 @@ class TestCallbackEndpoint:
 class TestCreateAuthRoutes:
     """Test suite for create_auth_routes factory."""
 
-    def test_creates_two_routes(self):
-        """Test that create_auth_routes returns two routes."""
-        routes = create_auth_routes()
+    def test_returns_api_router(self):
+        """Test that create_auth_routes returns an APIRouter."""
+        from fastapi import APIRouter
 
-        assert len(routes) == 2
+        app_state = _AppState(branding=_TEST_BRANDING)
+        get_state = _state_dependency(app_state)
+        router = create_auth_routes(get_state)
+
+        assert isinstance(router, APIRouter)
+
+    def test_creates_two_routes(self):
+        """Test that create_auth_routes creates two routes."""
+        app_state = _AppState(branding=_TEST_BRANDING)
+        get_state = _state_dependency(app_state)
+        router = create_auth_routes(get_state)
+
+        assert len(router.routes) == 2
 
     def test_route_paths(self):
         """Test that routes have correct paths."""
-        routes = create_auth_routes()
+        app_state = _AppState(branding=_TEST_BRANDING)
+        get_state = _state_dependency(app_state)
+        router = create_auth_routes(get_state)
 
-        paths = [route.path for route in routes]
+        paths = [route.path for route in router.routes]  # type: ignore[union-attr]
         assert "/auth/login" in paths
         assert "/auth/callback" in paths
 
     def test_route_methods(self):
         """Test that routes use GET method."""
-        routes = create_auth_routes()
+        app_state = _AppState(branding=_TEST_BRANDING)
+        get_state = _state_dependency(app_state)
+        router = create_auth_routes(get_state)
 
-        for route in routes:
-            assert route.methods is not None
-            assert "GET" in route.methods
+        for route in router.routes:
+            assert route.methods is not None  # type: ignore[union-attr]
+            assert "GET" in route.methods  # type: ignore[union-attr]

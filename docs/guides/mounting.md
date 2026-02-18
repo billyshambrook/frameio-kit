@@ -1,13 +1,13 @@
-# Mounting to Existing Applications
+# Embedding in FastAPI
 
-You can mount your frameio-kit [`App`](../reference/api.md#frameio_kit.App) into any existing ASGI-compatible application without changing your existing code. Since `App` is fully ASGI-compliant, it integrates seamlessly with frameworks like **FastAPI**, **Starlette**, **Quart**, and any other ASGI server.
+frameio-kit is built on FastAPI. The [`App`](../reference/api.md#frameio_kit.App) class provides a `create_router()` method that returns a standard FastAPI `APIRouter`, which you can embed into your existing FastAPI application using `include_router()`. This means routes appear in your OpenAPI docs and you can use FastAPI dependency injection alongside frameio-kit.
 
-!!! tip "ASGI Compatibility"
-    The examples below use FastAPI, but the same mounting approach works with any ASGI-compatible framework. Simply use your framework's mount or route mounting mechanism.
+!!! tip "Standalone Usage"
+    You don't need an existing FastAPI app. The `App` class is also a fully ASGI-compatible application that can be run directly with Uvicorn.
 
-## Why Mount to an Existing Application?
+## Why Embed in an Existing Application?
 
-Mounting to an existing application is useful when you want to:
+Embedding is useful when you want to:
 
 - **Consolidate services** -- Run your Frame.io integration alongside existing HTTP APIs.
 - **Share infrastructure** -- Reuse middleware, logging, and monitoring from your existing app.
@@ -16,7 +16,7 @@ Mounting to an existing application is useful when you want to:
 
 ## Exposed Routes
 
-Before mounting, understand what routes your frameio-kit `App` exposes. The paths below are **relative to the mount point** (for example, `/frameio` if you mount at that prefix):
+Before embedding, understand what routes your frameio-kit `App` exposes. The paths below are **relative to the prefix** you choose when calling `include_router()`:
 
 ### Always Available
 
@@ -30,11 +30,25 @@ Before mounting, understand what routes your frameio-kit `App` exposes. The path
 !!! note "OAuth Routes"
     OAuth routes are only available when you configure the `App` with an [`OAuthConfig`](../reference/api.md#frameio_kit.OAuthConfig). See [User Authentication](user-auth.md) for details.
 
-## Mounting Options
+### Install Routes (when configured)
 
-### Option 1: Mount at a Path Prefix (Recommended)
+- **`GET /install`** - Self-service installation landing page
+- **`GET /install/login`** - Initiates OAuth for install session
+- **`GET /install/callback`** - Handles install OAuth callback
+- **`GET /install/workspaces`** - HTMX: load workspace dropdown
+- **`GET /install/status`** - HTMX: workspace installation status
+- **`POST /install/execute`** - HTMX: perform install or update
+- **`POST /install/uninstall`** - HTMX: perform uninstall
+- **`POST /install/logout`** - Clear session and redirect
 
-Mount your frameio-kit `App` at a specific path prefix to keep routes organized:
+!!! note "Install Routes"
+    Install routes are only available when you configure the `App` with `install=True`. See [Installation](installation.md) for details.
+
+## Embedding Options
+
+### Option 1: Embed at a Path Prefix (Recommended)
+
+Use `include_router()` with a `prefix` to keep routes organized:
 
 ```python
 from contextlib import asynccontextmanager
@@ -42,13 +56,13 @@ from fastapi import FastAPI
 from frameio_kit import App, WebhookEvent, ActionEvent, Message
 
 # Your frameio-kit app
-frameio_app = App()
+kit = App()
 
-@frameio_app.on_webhook("file.ready")
+@kit.on_webhook("file.ready")
 async def on_file_ready(event: WebhookEvent):
     print(f"File {event.resource_id} is ready!")
 
-@frameio_app.on_action("my_app.process", name="Process", description="Process this file")
+@kit.on_action("my_app.process", name="Process", description="Process this file")
 async def process_file(event: ActionEvent):
     return Message(title="Processing", description="File is being processed")
 
@@ -56,20 +70,20 @@ async def process_file(event: ActionEvent):
 @asynccontextmanager
 async def lifespan(app):
     yield
-    await frameio_app.close()
+    await kit.close()
 
 # Your existing FastAPI app
-fastapi_app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=lifespan)
 
-# Mount at /frameio prefix
-fastapi_app.mount("/frameio", frameio_app)
+# Embed at /frameio prefix
+app.include_router(kit.create_router(), prefix="/frameio")
 
 # Your existing FastAPI routes work normally
-@fastapi_app.get("/")
+@app.get("/")
 async def root():
     return {"message": "Hello World"}
 
-@fastapi_app.get("/health")
+@app.get("/health")
 async def health():
     return {"status": "healthy"}
 ```
@@ -79,51 +93,52 @@ async def health():
 - Frame.io webhooks/actions → `https://your-domain.com/frameio/`
 - OAuth login (if enabled) → `https://your-domain.com/frameio/auth/login`
 - OAuth callback (if enabled) → `https://your-domain.com/frameio/auth/callback`
+- Install page (if enabled) → `https://your-domain.com/frameio/install`
+- Install callback (if enabled) → `https://your-domain.com/frameio/install/callback`
 - Your routes remain at their original paths
 
-### Option 2: Mount at Root Path
+### Option 2: Embed at Root Path
 
-If you want Frame.io events at the root path, mount at `/`:
+If you want Frame.io events at the root path, include without a prefix:
 
 ```python
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from frameio_kit import App, WebhookEvent
 
-frameio_app = App()
+kit = App()
 
-@frameio_app.on_webhook("file.ready")
+@kit.on_webhook("file.ready")
 async def on_file_ready(event: WebhookEvent):
     print(f"File {event.resource_id} is ready!")
 
 @asynccontextmanager
 async def lifespan(app):
     yield
-    await frameio_app.close()
+    await kit.close()
 
-fastapi_app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=lifespan)
 
-# Define your FastAPI routes BEFORE mounting
-@fastapi_app.get("/health")
+# Define your FastAPI routes
+@app.get("/health")
 async def health():
     return {"status": "healthy"}
 
-@fastapi_app.get("/metrics")
+@app.get("/metrics")
 async def metrics():
     return {"requests": 1000}
 
-# Mount at root - handles all POST requests to "/"
-fastapi_app.mount("/", frameio_app)
+# Include at root
+app.include_router(kit.create_router())
 ```
-
-!!! warning "Route Order Matters"
-    When mounting at `/`, frameworks like FastAPI resolve routes in registration order. Define your application routes **before** mounting frameio-kit; otherwise, the mounted `App` may intercept requests that you expect to hit your own routes.
 
 **With this setup:**
 
 - Frame.io webhooks/actions → `https://your-domain.com/`
 - OAuth login (if enabled) → `https://your-domain.com/auth/login`
 - OAuth callback (if enabled) → `https://your-domain.com/auth/callback`
+- Install page (if enabled) → `https://your-domain.com/install`
+- Install callback (if enabled) → `https://your-domain.com/install/callback`
 - Your routes remain accessible at their defined paths
 
 
@@ -136,7 +151,7 @@ Use `uvicorn` (or any ASGI server) to run your combined application:
 
 ```bash
 # Point to your application instance
-uvicorn main:fastapi_app --host 0.0.0.0 --port 8000 --reload
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 ## Deployment Considerations
@@ -146,7 +161,7 @@ uvicorn main:fastapi_app --host 0.0.0.0 --port 8000 --reload
 Add a health check endpoint to monitor both your application and frameio-kit:
 
 ```python
-@fastapi_app.get("/health")
+@app.get("/health")
 async def health():
     return {"status": "healthy"}
 ```
@@ -157,9 +172,9 @@ async def health():
 
 If Frame.io events return 404:
 
-1. Verify the mount path matches your webhook/action URLs in Frame.io
+1. Verify the prefix matches your webhook/action URLs in Frame.io
 2. Check that you're using the correct HTTP method (`POST` for webhooks/actions)
-3. Ensure the mount path doesn't conflict with existing application routes or other mounted apps.
+3. Ensure the prefix doesn't conflict with existing application routes
 
 ### Signature Validation Fails
 

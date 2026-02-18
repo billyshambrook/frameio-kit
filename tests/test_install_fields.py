@@ -169,7 +169,7 @@ class TestAppInstallFieldsValidation:
     def test_install_fields_on_app_state(self, oauth_config):
         fields = [InstallField(name="foo", label="Foo")]
         app = App(oauth=oauth_config, install=True, install_fields=fields)
-        assert app._asgi_app.state.install_fields == (InstallField(name="foo", label="Foo"),)
+        assert app._install_fields == (InstallField(name="foo", label="Foo"),)
 
     def test_install_fields_passed_to_manager(self, oauth_config):
         fields = [

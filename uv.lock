@@ -381,12 +381,12 @@ version = "0.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "cryptography" },
+    { name = "fastapi" },
     { name = "frameio" },
     { name = "frameio-experimental" },
     { name = "httpx" },
     { name = "itsdangerous" },
     { name = "pydantic" },
-    { name = "starlette" },
 ]
 
 [package.optional-dependencies]
@@ -404,7 +404,6 @@ otel = [
 [package.dev-dependencies]
 dev = [
     { name = "aioboto3" },
-    { name = "fastapi" },
     { name = "jinja2" },
     { name = "mkdocstrings-python" },
     { name = "opentelemetry-api" },
@@ -424,6 +423,7 @@ dev = [
 requires-dist = [
     { name = "aioboto3", marker = "extra == 'dynamodb'", specifier = ">=13.0.0" },
     { name = "cryptography", specifier = ">=44.0.0" },
+    { name = "fastapi", specifier = ">=0.115.0" },
     { name = "frameio", specifier = ">=0.0.23" },
     { name = "frameio-experimental", specifier = ">=0.0.3" },
     { name = "httpx", specifier = ">=0.28.1" },
@@ -432,14 +432,12 @@ requires-dist = [
     { name = "opentelemetry-api", marker = "extra == 'otel'", specifier = ">=1.20.0" },
     { name = "pydantic", specifier = ">=2.11.10" },
     { name = "python-multipart", marker = "extra == 'install'", specifier = ">=0.0.18" },
-    { name = "starlette", specifier = ">=0.48.0" },
 ]
 provides-extras = ["dynamodb", "install", "otel"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "aioboto3", specifier = ">=13.0.0" },
-    { name = "fastapi", specifier = ">=0.115.0" },
     { name = "jinja2", specifier = ">=3.1.0" },
     { name = "mkdocstrings-python", specifier = ">=1.18.2" },
     { name = "opentelemetry-api", specifier = ">=1.20.0" },
