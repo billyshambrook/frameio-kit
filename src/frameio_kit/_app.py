@@ -34,7 +34,8 @@ import logging
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from collections.abc import Sequence
-from typing import Awaitable, Callable, cast, get_args
+from contextlib import AbstractAsyncContextManager as AsyncContextManager
+from typing import Any, Awaitable, Callable, cast, get_args
 
 from starlette.applications import Starlette
 from starlette.requests import Request
@@ -44,7 +45,7 @@ from starlette.types import Receive, Scope, Send
 
 from ._auth_routes import create_auth_routes
 from ._client import Client
-from ._context import _install_config_context, _user_token_context
+from ._context import _app_state_context, _install_config_context, _user_token_context
 from ._events import ActionEvent, AnyEvent, ResourceType, WebhookEvent
 from ._exceptions import (
     ConfigurationError,
@@ -143,6 +144,7 @@ class App:
         token: str | None = None,
         api_url: str | None = None,
         middleware: list[Middleware] | None = None,
+        lifespan: Callable[["App"], "AsyncContextManager"] | None = None,
         # OAuth credentials
         oauth: OAuthConfig | None = None,
         # Shared infrastructure (used by both OAuth token storage and install records)
@@ -174,6 +176,10 @@ class App:
                 target a different API environment.
             middleware: An optional list of middleware classes to process
                 requests before they reach the handler.
+            lifespan: An optional async context manager factory for managing
+                shared resources (e.g. HTTP clients, DB pools). Receives the
+                ``App`` instance and may yield a state value accessible in
+                handlers via ``get_app_state()``.
             oauth: Optional OAuth configuration for user authentication. When
                 provided, enables Adobe Login OAuth flow for actions that
                 require user-specific authentication.
@@ -206,6 +212,8 @@ class App:
         self._token = token
         self._api_url = api_url
         self._middleware = middleware or []
+        self._user_lifespan = lifespan
+        self._app_state: Any = None
         self._oauth_config = oauth
         self._storage = storage
         self._encryption_key = encryption_key
@@ -607,8 +615,15 @@ class App:
     @asynccontextmanager
     async def _lifespan(self, app: Starlette):
         """ASGI lifespan handler for standalone usage."""
-        yield
-        await self.close()
+        try:
+            if self._user_lifespan:
+                async with self._user_lifespan(self) as state:
+                    self._app_state = state
+                    yield
+            else:
+                yield
+        finally:
+            await self.close()
 
     def _create_asgi_app(self) -> Starlette:
         """Builds the Starlette ASGI application with routes and lifecycle hooks."""
@@ -813,6 +828,11 @@ class App:
                 )
                 return JSONResponse(msg.model_dump(exclude_none=True))
 
+        # Set app state in context if available
+        app_state_ctx_token = None
+        if self._app_state is not None:
+            app_state_ctx_token = _app_state_context.set(self._app_state)
+
         # Set install config in context if available
         config_ctx_token = None
         if self._install_fields and self._install_manager:
@@ -852,6 +872,8 @@ class App:
             logger.exception("Error processing event '%s'", event_type)
             return Response("Internal Server Error", status_code=500)
         finally:
+            if app_state_ctx_token is not None:
+                _app_state_context.reset(app_state_ctx_token)
             if config_ctx_token is not None:
                 _install_config_context.reset(config_ctx_token)
             if user_ctx_token is not None:

@@ -55,6 +55,33 @@ app = App(middleware=[LoggingMiddleware()])
 
 See [Middleware](middleware.md) for detailed examples.
 
+### Lifespan
+
+Use the `lifespan` parameter to manage shared resources (HTTP clients, database pools, etc.) with proper startup and shutdown lifecycle:
+
+```python
+from contextlib import asynccontextmanager
+from frameio_kit import App, get_app_state, WebhookEvent
+import httpx
+
+@asynccontextmanager
+async def lifespan(app):
+    async with httpx.AsyncClient() as http_client:
+        yield {"http_client": http_client}
+
+app = App(lifespan=lifespan)
+
+@app.on_webhook("file.ready")
+async def on_file_ready(event: WebhookEvent):
+    state = get_app_state()
+    resp = await state["http_client"].get("https://example.com")
+```
+
+The `lifespan` callable receives the `App` instance and must be an async context manager. Code before `yield` runs at startup, code after runs at shutdown. The value yielded becomes accessible in any handler via [`get_app_state()`](../reference/api.md#frameio_kit.get_app_state).
+
+!!! note "Mounted sub-apps"
+    When mounting the frameio-kit `App` inside another ASGI framework, the inner app's `lifespan` will not run automatically. Manage shared resources in the parent app's lifespan and call `frameio_app.close()` from there. See [Mounting to Existing Apps](mounting.md) for details.
+
 ### OAuth Configuration
 
 Enable Adobe Login OAuth for user authentication:

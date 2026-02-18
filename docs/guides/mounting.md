@@ -130,6 +130,30 @@ fastapi_app.mount("/", frameio_app)
 !!! tip "frameio-kit Middleware"
     For Frame.io-specific middleware (that should only run on webhook/action handlers), use frameio-kit's built-in [Middleware](middleware.md) system instead of application-level middleware.
 
+## Lifespan
+
+When mounting a frameio-kit `App` as a sub-application, the inner app's `lifespan` parameter **will not run** — ASGI frameworks only invoke the outermost application's lifespan. Manage shared resources in the parent app's lifespan and call `frameio_app.close()` from there:
+
+```python
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from frameio_kit import App
+import httpx
+
+frameio_app = App()
+
+@asynccontextmanager
+async def lifespan(app):
+    async with httpx.AsyncClient() as http_client:
+        # Store on the frameio app or pass through your own mechanism
+        app.state.http_client = http_client
+        yield
+    await frameio_app.close()
+
+fastapi_app = FastAPI(lifespan=lifespan)
+fastapi_app.mount("/frameio", frameio_app)
+```
+
 ## Running Your Application
 
 Use `uvicorn` (or any ASGI server) to run your combined application:

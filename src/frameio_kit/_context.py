@@ -5,6 +5,7 @@ authentication data and install configuration without attaching them to event ob
 """
 
 from contextvars import ContextVar
+from typing import Any
 
 # Context variable for storing the authenticated user's access token
 # This is set automatically when processing user-authenticated actions
@@ -13,6 +14,9 @@ _user_token_context: ContextVar[str | None] = ContextVar("user_token", default=N
 # Context variable for storing the installation config for the current request
 # This is set automatically when processing events for an app with install_fields
 _install_config_context: ContextVar[dict[str, str] | None] = ContextVar("install_config", default=None)
+
+# Context variable for storing the application state yielded from the lifespan
+_app_state_context: ContextVar[Any] = ContextVar("app_state", default=None)
 
 
 def get_user_token() -> str:
@@ -96,3 +100,41 @@ def get_install_config() -> dict[str, str]:
             "and stored install config for this workspace."
         )
     return config
+
+
+def get_app_state() -> Any:
+    """Get the application state yielded from the lifespan.
+
+    This function retrieves the state object that was yielded by the
+    ``lifespan`` async context manager passed to ``App()``. It can be
+    called from any webhook or action handler.
+
+    The state is stored in request-scoped context, not on the event object.
+
+    Returns:
+        The state value yielded by the lifespan context manager.
+
+    Raises:
+        RuntimeError: If called without a lifespan that yields state.
+
+    Example:
+        ```python
+        from contextlib import asynccontextmanager
+        from frameio_kit import App, get_app_state
+
+        @asynccontextmanager
+        async def lifespan(app):
+            yield {"db": my_db_pool}
+
+        app = App(lifespan=lifespan)
+
+        @app.on_webhook("file.ready")
+        async def on_file_ready(event):
+            state = get_app_state()
+            await state["db"].execute(...)
+        ```
+    """
+    state = _app_state_context.get()
+    if state is None:
+        raise RuntimeError("get_app_state() requires a lifespan that yields state to be configured on the App.")
+    return state

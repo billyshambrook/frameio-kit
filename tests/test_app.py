@@ -1,10 +1,21 @@
 import json
 import time
+from contextlib import asynccontextmanager
 
 import httpx
 import pytest
 
-from frameio_kit import ActionEvent, AnyEvent, AnyResponse, App, Message, Middleware, NextFunc, WebhookEvent
+from frameio_kit import (
+    ActionEvent,
+    AnyEvent,
+    AnyResponse,
+    App,
+    Message,
+    Middleware,
+    NextFunc,
+    WebhookEvent,
+    get_app_state,
+)
 
 # --- Middleware Test Classes ---
 
@@ -771,3 +782,128 @@ async def test_resolver_error_handling(webhook_payload, create_valid_signature):
 
     # Verify handler was NOT called
     assert len(call_log) == 0
+
+
+# --- Lifespan Tests ---
+
+
+async def test_lifespan_startup_and_shutdown_order(webhook_payload, sample_secret, create_valid_signature):
+    """Tests that lifespan startup runs before handlers, and shutdown runs after."""
+    order = []
+
+    @asynccontextmanager
+    async def lifespan(app):
+        order.append("startup")
+        yield {"key": "value"}
+        order.append("shutdown")
+
+    app = App(lifespan=lifespan)
+
+    @app.on_webhook("file.ready", secret=sample_secret)
+    async def handler(event: WebhookEvent):
+        order.append("handler")
+
+    body = json.dumps(webhook_payload).encode()
+    ts = int(time.time())
+    headers = {
+        "X-Frameio-Request-Timestamp": str(ts),
+        "X-Frameio-Signature": create_valid_signature(ts, body, sample_secret),
+    }
+
+    # httpx.ASGITransport does not invoke ASGI lifespan events, so we
+    # drive the lifespan context manager manually.
+    async with app._lifespan(app._asgi_app):
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+            response = await client.post("/", content=body, headers=headers)
+            assert response.status_code == 200
+
+    assert order == ["startup", "handler", "shutdown"]
+
+
+async def test_lifespan_state_accessible_via_get_app_state(webhook_payload, sample_secret, create_valid_signature):
+    """Tests that state yielded in lifespan is available via get_app_state() in handler."""
+    captured_state = []
+
+    @asynccontextmanager
+    async def lifespan(app):
+        yield {"http_client": "mock_client", "db": "mock_pool"}
+
+    app = App(lifespan=lifespan)
+
+    @app.on_webhook("file.ready", secret=sample_secret)
+    async def handler(event: WebhookEvent):
+        state = get_app_state()
+        captured_state.append(state)
+
+    body = json.dumps(webhook_payload).encode()
+    ts = int(time.time())
+    headers = {
+        "X-Frameio-Request-Timestamp": str(ts),
+        "X-Frameio-Signature": create_valid_signature(ts, body, sample_secret),
+    }
+
+    async with app._lifespan(app._asgi_app):
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+            response = await client.post("/", content=body, headers=headers)
+            assert response.status_code == 200
+
+    assert len(captured_state) == 1
+    assert captured_state[0] == {"http_client": "mock_client", "db": "mock_pool"}
+
+
+async def test_no_lifespan_backward_compatible(webhook_payload, sample_secret, create_valid_signature):
+    """Tests that the app works without a lifespan parameter (backward compat)."""
+    call_log = []
+    app = App()
+
+    @app.on_webhook("file.ready", secret=sample_secret)
+    async def handler(event: WebhookEvent):
+        call_log.append(event)
+
+    body = json.dumps(webhook_payload).encode()
+    ts = int(time.time())
+    headers = {
+        "X-Frameio-Request-Timestamp": str(ts),
+        "X-Frameio-Signature": create_valid_signature(ts, body, sample_secret),
+    }
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/", content=body, headers=headers)
+        assert response.status_code == 200
+
+    assert len(call_log) == 1
+
+
+async def test_close_runs_even_if_user_lifespan_raises():
+    """Tests that close() is called even if the user lifespan raises."""
+    close_called = []
+
+    @asynccontextmanager
+    async def lifespan(app):
+        yield {"key": "value"}
+        raise RuntimeError("cleanup error in user lifespan")
+
+    app = App(lifespan=lifespan)
+
+    # Monkey-patch close to track if it was called
+    original_close = app.close
+
+    async def tracked_close():
+        close_called.append(True)
+        await original_close()
+
+    app.close = tracked_close  # type: ignore[assignment]
+
+    # Drive lifespan manually; the user lifespan raises on exit but
+    # close() in the finally block should still run.
+    with pytest.raises(RuntimeError, match="cleanup error in user lifespan"):
+        async with app._lifespan(app._asgi_app):
+            pass
+
+    assert len(close_called) == 1
+
+
+def test_get_app_state_raises_without_lifespan():
+    """Tests that calling get_app_state() without a lifespan raises RuntimeError."""
+    with pytest.raises(RuntimeError, match="get_app_state\\(\\) requires a lifespan"):
+        get_app_state()
