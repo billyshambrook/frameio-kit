@@ -43,7 +43,7 @@ from starlette.types import Receive, Scope, Send
 from ._auth_routes import create_auth_routes
 from ._auth_templates import AuthTemplateRenderer
 from ._client import Client
-from ._context import _install_config_context, _user_token_context
+from ._context import _install_config_context, _request_context, _user_token_context
 from ._events import ActionEvent, AnyEvent, ResourceType, WebhookEvent
 from ._exceptions import (
     ConfigurationError,
@@ -792,6 +792,14 @@ class App:
 
     async def _handle_request(self, request: Request) -> Response:
         """The main ASGI request handler."""
+        request_ctx_token = _request_context.set(request)
+        try:
+            return await self._handle_request_inner(request)
+        finally:
+            _request_context.reset(request_ctx_token)
+
+    async def _handle_request_inner(self, request: Request) -> Response:
+        """Inner request handler with all processing logic."""
         body = await request.body()
 
         # Parse request

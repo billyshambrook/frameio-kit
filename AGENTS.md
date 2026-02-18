@@ -120,7 +120,7 @@ The SDK follows a modular architecture with clear separation of concerns:
 | `_oauth.py` | OAuth client and token management |
 | `_encryption.py` | Token encryption |
 | `_client.py` | Frame.io API client |
-| `_context.py` | Request context management (user tokens, install config) |
+| `_context.py` | Request context management (request, user tokens, install config) |
 | `_state.py` | Shared app state container and FastAPI dependency factory |
 | `_auth_routes.py` | OAuth authentication routes |
 | `_auth_templates.py` | Auth callback page templates |

@@ -6,7 +6,7 @@ from ._app import (
     WebhookHandlerFunc,
 )
 from ._client import Client
-from ._context import get_install_config, get_user_token
+from ._context import get_install_config, get_request, get_user_token
 from ._events import Account, ActionEvent, AnyEvent, Project, Resource, ResourceType, User, WebhookEvent, Workspace
 from ._exceptions import (
     ConfigurationError,
@@ -51,6 +51,7 @@ __all__ = [
     "Client",
     # _context.py
     "get_install_config",
+    "get_request",
     "get_user_token",
     # _events.py
     "Account",

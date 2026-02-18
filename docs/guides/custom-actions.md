@@ -326,6 +326,32 @@ async def process_file(event: ActionEvent):
    - Secret: Copy the generated secret to your environment variables
 4. **Test the action** by right-clicking on an asset
 
+## Accessing the Request Object
+
+Use [`get_request()`](../reference/api.md#frameio_kit.get_request) to access the underlying FastAPI `Request` inside any handler. This is useful for reading headers, client IP, cookies, or other HTTP-level details:
+
+```python
+from frameio_kit import App, ActionEvent, Message, get_request
+
+@app.on_action(
+    event_type="my_app.analyze",
+    name="Analyze File",
+    description="Analyze this file",
+)
+async def analyze_file(event: ActionEvent):
+    request = get_request()
+    client_ip = request.client.host
+    user_agent = request.headers.get("user-agent")
+
+    return Message(
+        title="Analyzed",
+        description=f"Request from {client_ip}"
+    )
+```
+
+!!! tip
+    `get_request()` works in both webhook and action handlers, as well as inside middleware.
+
 ## Best Practices
 
 1. **Keep actions focused** - Each action should do one thing well
