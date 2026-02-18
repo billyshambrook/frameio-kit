@@ -70,7 +70,7 @@ async def transcribe_file(event: ActionEvent):
 - [`secret`](../reference/api.md#frameio_kit.App.on_action\(secret\)) *(str | None, optional)*: Signing secret from Frame.io. If not provided, falls back to the `CUSTOM_ACTION_SECRET` environment variable. Explicit parameter takes precedence over environment variable.
 - [`resource_type`](../reference/api.md#frameio_kit.App.on_action\(resource_type\)) *(str | list[str] | None, optional)*: Restrict this action to specific resource types. Accepts `"file"`, `"folder"`, or `"version_stack"` — a single string or a list. When the resource type doesn't match, a Message is returned to the user automatically. Defaults to `None` (all types accepted).
 - [`require_user_auth`](../reference/api.md#frameio_kit.App.on_action\(require_user_auth\)) *(bool, optional)*: Require user to authenticate via Adobe Login OAuth. When `True`, users must sign in before the action executes. See [User Authentication](user-auth.md) for details.
-- [`on_auth_complete`](../reference/api.md#frameio_kit.App.on_action\(on_auth_complete\)) *(async callable, optional)*: Async callback invoked after a user completes OAuth triggered by this action. Receives an [`AuthCompleteContext`](../reference/api.md#frameio_kit.AuthCompleteContext) with the original [`ActionEvent`](../reference/api.md#frameio_kit.ActionEvent). Return a Starlette `Response` (e.g., `RedirectResponse`) to replace the default success page, or `None` to keep it. Requires `require_user_auth=True`.
+- [`on_auth_complete`](../reference/api.md#frameio_kit.App.on_action\(on_auth_complete\)) *(async callable, optional)*: Async callback invoked after a user completes OAuth triggered by this action. Receives an [`AuthCompleteContext`](../reference/api.md#frameio_kit.AuthCompleteContext) with the original [`ActionEvent`](../reference/api.md#frameio_kit.ActionEvent). Return a `Response` (e.g., `RedirectResponse`) to replace the default success page, or `None` to keep it. Requires `require_user_auth=True`.
 
 !!! note "Environment Variables"
     **Single action:** Use the default `CUSTOM_ACTION_SECRET` environment variable and omit the `secret` parameter.
@@ -359,7 +359,7 @@ When an action requires user authentication (`require_user_auth=True`), you can 
 ### Redirecting After Auth
 
 ```python
-from starlette.responses import RedirectResponse, Response
+from fastapi.responses import RedirectResponse, Response
 from frameio_kit import App, ActionEvent, AuthCompleteContext, OAuthConfig
 
 app = App(oauth=OAuthConfig(client_id="...", client_secret="..."))

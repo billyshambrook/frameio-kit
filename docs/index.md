@@ -31,7 +31,7 @@ async def analyze_file(event: ActionEvent):
 - **Secure by default** — built-in signature verification for all incoming requests
 - **OAuth integration** — Adobe Login support for user-specific authentication
 - **Self-service installation** — branded install pages for workspace admins
-- **ASGI-compatible** — mount into FastAPI, Starlette, or any ASGI framework
+- **Built on FastAPI** — embed into existing apps with `include_router()` or run standalone
 - **Built for Python 3.14+** with full type hints
 
 ## Learn More

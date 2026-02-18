@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
-from starlette.applications import Starlette
-from starlette.responses import RedirectResponse
+from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
 
 from frameio_kit._app import AuthCompleteContext, _BrandingConfig, _HandlerRegistration
 from frameio_kit._auth_routes import create_auth_routes
@@ -13,6 +13,7 @@ from frameio_kit._auth_templates import AuthTemplateRenderer
 from frameio_kit._encryption import TokenEncryption
 from frameio_kit._events import ActionEvent
 from frameio_kit._oauth import OAuthConfig, StateSerializer, TokenManager
+from frameio_kit._state import _AppState, _state_dependency
 from frameio_kit._storage import MemoryStorage
 
 TEST_SECRET_KEY = TokenEncryption.generate_key()
@@ -78,21 +79,24 @@ def _make_test_app(
     state_serializer: StateSerializer,
     oauth_client,
     action_handlers: dict | None = None,
-) -> Starlette:
-    app = Starlette()
-    app.state.oauth_config = OAuthConfig(
-        client_id="test_client_id",
-        client_secret="test_client_secret",
-        redirect_url="https://example.com/auth/callback",
+) -> FastAPI:
+    app_state = _AppState(
+        branding=_TEST_BRANDING,
+        oauth_config=OAuthConfig(
+            client_id="test_client_id",
+            client_secret="test_client_secret",
+            redirect_url="https://example.com/auth/callback",
+        ),
+        oauth_client=oauth_client,
+        state_serializer=state_serializer,
+        token_manager=token_manager,
+        auth_renderer=_TEST_AUTH_RENDERER,
+        action_handlers=action_handlers,
     )
-    app.state.token_manager = token_manager
-    app.state.oauth_client = oauth_client
-    app.state.state_serializer = state_serializer
-    app.state.auth_renderer = _TEST_AUTH_RENDERER
-    if action_handlers is not None:
-        app.state._action_handlers = action_handlers
-    auth_routes = create_auth_routes()
-    app.routes.extend(auth_routes)
+    get_state = _state_dependency(app_state)
+
+    app = FastAPI()
+    app.include_router(create_auth_routes(get_state))
     return app
 
 

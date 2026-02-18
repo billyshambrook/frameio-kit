@@ -36,13 +36,12 @@ from dataclasses import dataclass, field
 from collections.abc import Sequence
 from typing import Awaitable, Callable, cast, get_args
 
-from starlette.applications import Starlette
-from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
-from starlette.routing import Route
+from fastapi import APIRouter, FastAPI, Request
+from fastapi.responses import JSONResponse, Response
 from starlette.types import Receive, Scope, Send
 
 from ._auth_routes import create_auth_routes
+from ._auth_templates import AuthTemplateRenderer
 from ._client import Client
 from ._context import _install_config_context, _user_token_context
 from ._events import ActionEvent, AnyEvent, ResourceType, WebhookEvent
@@ -64,6 +63,7 @@ from ._secret_resolver import (
     WebhookSecretResolver,
     resolve_secret_at_decorator_time,
 )
+from ._state import _AppState, _state_dependency
 from ._storage import Storage
 
 logger = logging.getLogger(__name__)
@@ -274,7 +274,8 @@ class App:
         # Request handler for parsing and validation
         self._request_handler = RequestHandler()
 
-        self._asgi_app = self._create_asgi_app()
+        self._router = self._create_router()
+        self._asgi_app = self._create_fastapi_app()
 
     @property
     def client(self) -> Client:
@@ -531,8 +532,8 @@ class App:
             on_auth_complete: Optional async callback invoked after a user
                 completes OAuth triggered by this action. Receives an
                 ``AuthCompleteContext`` with the original ``ActionEvent``.
-                Return a Starlette ``Response`` (e.g. ``RedirectResponse``)
-                to replace the default success page, or ``None`` to keep it.
+                Return a ``Response`` (e.g. ``RedirectResponse``) to replace
+                the default success page, or ``None`` to keep it.
                 Requires ``require_user_auth=True``.
 
         Raises:
@@ -569,27 +570,51 @@ class App:
 
         return decorator
 
+    def create_router(self) -> APIRouter:
+        """Return a FastAPI ``APIRouter`` for embedding in an existing app.
+
+        Use this when you want to include frameio-kit routes in your own
+        FastAPI application via ``include_router()``.
+
+        Example:
+            ```python
+            from fastapi import FastAPI
+            from frameio_kit import App
+
+            kit = App()
+            app = FastAPI()
+            app.include_router(kit.create_router(), prefix="/frameio")
+            ```
+
+        Returns:
+            An ``APIRouter`` containing all frameio-kit routes.
+        """
+        return self._router
+
     async def close(self) -> None:
         """Close underlying HTTP clients and release resources.
 
         Call this when shutting down the application to cleanly close
         connections. When running standalone with uvicorn this is handled
-        automatically via the ASGI lifespan. When mounting inside another
-        framework (e.g. FastAPI) you should call this from the parent
-        app's lifespan shutdown.
+        automatically via the ASGI lifespan. When embedding via
+        ``create_router()`` you should call this from the parent app's
+        lifespan shutdown.
 
         Example:
             ```python
             from contextlib import asynccontextmanager
             from fastapi import FastAPI
+            from frameio_kit import App
+
+            kit = App()
 
             @asynccontextmanager
             async def lifespan(app):
                 yield
-                await frameio_app.close()
+                await kit.close()
 
             app = FastAPI(lifespan=lifespan)
-            app.mount("/", frameio_app)
+            app.include_router(kit.create_router())
             ```
         """
         if self._api_client:
@@ -605,61 +630,60 @@ class App:
                 logger.exception("Error closing OAuth manager")
 
     @asynccontextmanager
-    async def _lifespan(self, app: Starlette):
+    async def _lifespan(self, app: FastAPI):
         """ASGI lifespan handler for standalone usage."""
         yield
         await self.close()
 
-    def _create_asgi_app(self) -> Starlette:
-        """Builds the Starlette ASGI application with routes and lifecycle hooks."""
-        routes = [Route("/", self._handle_request, methods=["POST"])]
+    def _create_app_state(self) -> _AppState:
+        """Build the frozen state container for route handlers."""
+        auth_renderer = None
+        if self._oauth_manager:
+            auth_renderer = AuthTemplateRenderer(self._branding)
+
+        return _AppState(
+            branding=self._branding,
+            oauth_config=self._oauth_config,
+            oauth_client=self._oauth_manager.oauth_client if self._oauth_manager else None,
+            state_serializer=self._oauth_manager.state_serializer if self._oauth_manager else None,
+            token_manager=self._oauth_manager.token_manager if self._oauth_manager else None,
+            auth_renderer=auth_renderer,
+            install_manager=self._install_manager,
+            template_renderer=self._template_renderer,
+            install_session_ttl=self._install_session_ttl,
+            install_fields=self._install_fields,
+            base_url=self._base_url,
+            webhook_handlers=self._webhook_handlers,
+            action_handlers=self._action_handlers,
+        )
+
+    def _create_router(self) -> APIRouter:
+        """Build the APIRouter with all frameio-kit routes."""
+        state = self._create_app_state()
+        get_state = _state_dependency(state)
+
+        router = APIRouter()
+        router.add_api_route("/", self._handle_request, methods=["POST"])
 
         # Add OAuth routes if configured
         if self._oauth_manager:
-            auth_routes = create_auth_routes()
-            routes.extend(auth_routes)
+            auth_router = create_auth_routes(get_state)
+            router.include_router(auth_router)
 
         # Add install routes if configured
         if self._install_enabled:
             from ._install_routes import create_install_routes
 
-            install_routes = create_install_routes()
-            routes.extend(install_routes)
+            install_router = create_install_routes(get_state)
+            router.include_router(install_router)
 
-        starlette_app = Starlette(
-            debug=False,
-            routes=routes,
-            lifespan=self._lifespan,
-        )
+        return router
 
-        # Set state eagerly so it's available even when mounted as a
-        # sub-application (where the inner lifespan may not run).
-        starlette_app.state.branding = self._branding
-
-        if self._oauth_manager and self._oauth_config:
-            starlette_app.state.token_manager = self._oauth_manager.token_manager
-            starlette_app.state.oauth_config = self._oauth_config
-            starlette_app.state.oauth_client = self._oauth_manager.oauth_client
-            starlette_app.state.state_serializer = self._oauth_manager.state_serializer
-            starlette_app.state._action_handlers = self._action_handlers
-
-            # Set up auth template renderer for OAuth callback pages
-            from ._auth_templates import AuthTemplateRenderer
-
-            starlette_app.state.auth_renderer = AuthTemplateRenderer(self._branding)
-
-        if self._install_enabled and self._install_manager and self._template_renderer:
-            starlette_app.state.install_manager = self._install_manager
-            starlette_app.state.install_session_ttl = self._install_session_ttl
-            starlette_app.state.base_url = self._base_url
-            starlette_app.state.template_renderer = self._template_renderer
-            starlette_app.state.install_fields = self._install_fields
-            # Store references so the manifest can be built lazily (handlers
-            # are registered via decorators after __init__ completes).
-            starlette_app.state._webhook_handlers = self._webhook_handlers
-            starlette_app.state._action_handlers = self._action_handlers
-
-        return starlette_app
+    def _create_fastapi_app(self) -> FastAPI:
+        """Build a standalone FastAPI application wrapping the router."""
+        app = FastAPI(lifespan=self._lifespan)
+        app.include_router(self._router)
+        return app
 
     def _find_handler(self, event_type: str) -> _HandlerRegistration | None:
         """Finds the registered handler for a given event type."""
@@ -858,5 +882,5 @@ class App:
                 _user_token_context.reset(user_ctx_token)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send):
-        """ASGI call interface to delegate to the underlying Starlette app."""
+        """ASGI call interface to delegate to the underlying FastAPI app."""
         await self._asgi_app(scope, receive, send)

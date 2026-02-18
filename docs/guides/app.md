@@ -10,8 +10,8 @@ from frameio_kit import App
 app = App()
 ```
 
-!!! tip "Mounting to Existing Applications"
-    If you have an existing ASGI application (FastAPI, Starlette, etc.), you can mount your frameio-kit `App` directly to it without any code changes. See [Mounting to Existing Apps](mounting.md) for details.
+!!! tip "Embedding in FastAPI"
+    If you have an existing FastAPI application, use `app.include_router(kit.create_router())` to embed your frameio-kit routes. See [Embedding in FastAPI](mounting.md) for details.
 
 ## Configuration Options
 
@@ -176,6 +176,6 @@ frameio-kit uses the following environment variables. All are optional — each 
 
 ## See Also
 
-- [Mounting to Existing Apps](mounting.md) - Mount your App to FastAPI, Starlette, or any ASGI framework
+- [Embedding in FastAPI](mounting.md) - Embed your App in an existing FastAPI application with `include_router()`
 - [Webhooks](webhooks.md#dynamic-secret-resolution) - Webhook-specific secret resolution
 - [Custom Actions](custom-actions.md#dynamic-secret-resolution) - Action-specific secret resolution

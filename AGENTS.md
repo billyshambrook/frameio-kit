@@ -25,7 +25,7 @@ Adherence to this stack is mandatory. Do not introduce new tools without a forma
 | **Testing** | **pytest** & **pytest-asyncio** | All tests must be written using pytest. Asynchronous code must be tested using pytest-asyncio. |
 | **HTTP Client** | **httpx** | Use httpx.AsyncClient for all API calls. Leverage its features for connection pooling, timeouts, and handling async requests. For tests, use httpx.MockRouter to mock API responses reliably without actual network calls. |
 | **Data Modeling** | **Pydantic** | All API response models and request bodies **MUST** be defined as Pydantic models. This provides data validation, serialization, and excellent editor support out-of-the-box. |
-| **Web Framework (App)** | **Starlette** (or FastAPI) | The ASGI application (FrameApp) should be built on the minimal, high-performance Starlette toolkit. FastAPI is acceptable if more advanced features like dependency injection are required, but Starlette is preferred for simplicity. |
+| **Web Framework (App)** | **FastAPI** | The ASGI application is built on FastAPI, using `APIRouter` for route composition and `Depends()` for state injection. Routes are exposed via `create_router()` for embedding in user applications. |
 | **Documentation** | **MkDocs** with **pydoc** | Generate beautiful, modern documentation directly from your code's docstrings. All public functions, classes, and methods must have comprehensive docstrings in the **Google Style**. |
 | **CI/CD** | **GitHub Actions** | The .github/workflows/ directory should contain workflows that automatically run ruff, mypy, and pytest on every pull request. |
 | **Security** | **Environment Variables** with **pydantic-settings** | Never hardcode secrets. API tokens, webhook secrets, etc., should be loaded from environment variables. pydantic-settings is the preferred way to manage this configuration. |
@@ -121,6 +121,7 @@ The SDK follows a modular architecture with clear separation of concerns:
 | `_encryption.py` | Token encryption |
 | `_client.py` | Frame.io API client |
 | `_context.py` | Request context management (user tokens, install config) |
+| `_state.py` | Shared app state container and FastAPI dependency factory |
 | `_auth_routes.py` | OAuth authentication routes |
 | `_auth_templates.py` | Auth callback page templates |
 | `_storage.py` | Storage abstraction (MemoryStorage) |
@@ -157,7 +158,7 @@ Custom actions that require OAuth (`require_user_auth=True`) can provide a callb
 
 - **`OnAuthCompleteFunc`** — `Callable[[AuthCompleteContext], Awaitable[Response | None]]` defined in `_app.py`, exported from `__init__.py`
 - **`AuthCompleteContext`** — frozen dataclass holding the original `ActionEvent` that triggered the auth flow (`_app.py`, exported from `__init__.py`)
-- Return a Starlette `Response` (e.g. `RedirectResponse`) to replace the default success page, or `None` to keep it
+- Return a `Response` (e.g. `RedirectResponse`) to replace the default success page, or `None` to keep it
 - The original event is persisted in storage keyed by `pending_auth:{user_id}:{interaction_id}` and retrieved in `_auth_routes.py` after token exchange
 - User token context is set before the callback is invoked, so `get_user_token()` works inside the callback
 
