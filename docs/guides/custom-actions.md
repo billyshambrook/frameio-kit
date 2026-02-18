@@ -350,7 +350,7 @@ async def analyze_file(event: ActionEvent):
 ```
 
 !!! tip
-    `get_request()` works in both webhook and action handlers, as well as inside middleware.
+    `get_request()` is available in webhook and action handlers, and any code called from them (including the kit's `Middleware` classes). It is not available in FastAPI/Starlette HTTP middleware.
 
 ## Best Practices
 

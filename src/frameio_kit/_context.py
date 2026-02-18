@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from fastapi import Request
 
 # Context variable for storing the underlying FastAPI Request object
-# This is set automatically when processing any incoming request
+# This is set automatically when processing webhook and action handler requests
 _request_context: ContextVar[Request | None] = ContextVar("request", default=None)
 
 # Context variable for storing the authenticated user's access token
