@@ -30,6 +30,20 @@ Before embedding, understand what routes your frameio-kit `App` exposes. The pat
 !!! note "OAuth Routes"
     OAuth routes are only available when you configure the `App` with an [`OAuthConfig`](../reference/api.md#frameio_kit.OAuthConfig). See [User Authentication](user-auth.md) for details.
 
+### Install Routes (when configured)
+
+- **`GET /install`** - Self-service installation landing page
+- **`GET /install/login`** - Initiates OAuth for install session
+- **`GET /install/callback`** - Handles install OAuth callback
+- **`GET /install/workspaces`** - HTMX: load workspace dropdown
+- **`GET /install/status`** - HTMX: workspace installation status
+- **`POST /install/execute`** - HTMX: perform install or update
+- **`POST /install/uninstall`** - HTMX: perform uninstall
+- **`POST /install/logout`** - Clear session and redirect
+
+!!! note "Install Routes"
+    Install routes are only available when you configure the `App` with `install=True`. See [Installation](installation.md) for details.
+
 ## Embedding Options
 
 ### Option 1: Embed at a Path Prefix (Recommended)
@@ -79,6 +93,8 @@ async def health():
 - Frame.io webhooks/actions → `https://your-domain.com/frameio/`
 - OAuth login (if enabled) → `https://your-domain.com/frameio/auth/login`
 - OAuth callback (if enabled) → `https://your-domain.com/frameio/auth/callback`
+- Install page (if enabled) → `https://your-domain.com/frameio/install`
+- Install callback (if enabled) → `https://your-domain.com/frameio/install/callback`
 - Your routes remain at their original paths
 
 ### Option 2: Embed at Root Path
@@ -121,6 +137,8 @@ app.include_router(kit.create_router())
 - Frame.io webhooks/actions → `https://your-domain.com/`
 - OAuth login (if enabled) → `https://your-domain.com/auth/login`
 - OAuth callback (if enabled) → `https://your-domain.com/auth/callback`
+- Install page (if enabled) → `https://your-domain.com/install`
+- Install callback (if enabled) → `https://your-domain.com/install/callback`
 - Your routes remain accessible at their defined paths
 
 
