@@ -8,6 +8,8 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 from opentelemetry.trace import SpanKind, StatusCode
 
+from starlette.middleware import Middleware as StarletteMiddleware
+
 from frameio_kit import ActionEvent, App, Message, WebhookEvent
 from frameio_kit._otel import OpenTelemetryMiddleware
 
@@ -171,6 +173,61 @@ async def test_handler_exception_records_error_on_span(
 
     exception_events = [e for e in span.events if e.name == "exception"]
     assert len(exception_events) >= 1
+
+
+async def test_scope_app_set_and_routes_exposed(
+    otel_middleware, webhook_payload, sample_secret, create_valid_signature
+):
+    """Verify scope['app'] inside Starlette's middleware stack points to App.
+
+    OpenTelemetry's Starlette instrumentation reads scope['app'].routes to
+    resolve the HTTP route for span names.  Starlette's own __call__
+    overwrites scope['app'] with itself, so _ScopeAppMiddleware (added by
+    App._create_asgi_app) must restore it to the outer App instance before
+    any instrumentation middleware runs.
+    """
+    app = App(middleware=[otel_middleware])
+    captured_scope_app = {}
+
+    @app.on_webhook("file.ready", secret=sample_secret)
+    async def handler(event: WebhookEvent):
+        # Inside the request handler, request.app (i.e. scope["app"])
+        # should be the outer App, not the inner Starlette.
+        pass
+
+    # Inject a thin ASGI middleware into the *inner* Starlette stack that
+    # records what scope["app"] is when middleware executes.  We append
+    # to user_middleware (rather than add_middleware which inserts at 0)
+    # so the recorder sits *after* _ScopeAppMiddleware in the call chain
+    # — the same position OTel auto-instrumentation middleware occupies.
+    class _Recorder:
+        def __init__(self, asgi_app):
+            self.asgi_app = asgi_app
+
+        async def __call__(self, scope, receive, send):
+            if scope["type"] == "http":
+                captured_scope_app["app"] = scope.get("app")
+            await self.asgi_app(scope, receive, send)
+
+    app._asgi_app.user_middleware.append(StarletteMiddleware(_Recorder))  # type: ignore[arg-type]
+
+    body = json.dumps(webhook_payload).encode()
+    ts = int(time.time())
+    headers = {
+        "X-Frameio-Request-Timestamp": str(ts),
+        "X-Frameio-Signature": create_valid_signature(ts, body, sample_secret),
+    }
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/", content=body, headers=headers)
+
+    assert response.status_code == 200
+    # scope["app"] inside Starlette's middleware stack must be the outer App.
+    assert captured_scope_app["app"] is app
+    # The routes property must proxy to the inner Starlette routes.
+    assert app.routes is app._asgi_app.routes
+    # The state property must proxy to the inner Starlette state.
+    assert app.state is app._asgi_app.state
 
 
 async def test_custom_tracer_name(

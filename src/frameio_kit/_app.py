@@ -40,7 +40,7 @@ from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
-from starlette.types import Receive, Scope, Send
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ._auth_routes import create_auth_routes
 from ._client import Client
@@ -80,6 +80,30 @@ ActionHandlerFunc = Callable[[ActionEvent], Awaitable[AnyResponse]]
 
 # A callback invoked after a user completes OAuth triggered by a custom action.
 OnAuthCompleteFunc = Callable[["AuthCompleteContext"], Awaitable[Response | None]]
+
+
+class _ScopeAppMiddleware:
+    """Pure ASGI middleware that sets ``scope["app"]`` to the outer :class:`App`.
+
+    Starlette's own ``__call__`` unconditionally sets ``scope["app"]`` to
+    itself *before* running its middleware stack.  This overwrites the value
+    set by :pymethod:`App.__call__`, which means any middleware that reads
+    ``scope["app"]`` (e.g. ``opentelemetry-instrumentation-starlette``)
+    sees the inner Starlette instance rather than the ``App`` wrapper.
+
+    By inserting this middleware into Starlette's middleware stack via
+    ``add_middleware`` (which places it outermost), we restore the correct
+    reference before any subsequent middleware executes.
+    """
+
+    def __init__(self, app: ASGIApp, outer_app: "App") -> None:
+        self.app = app
+        self.outer_app = outer_app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] in ("http", "websocket"):
+            scope["app"] = self.outer_app
+        await self.app(scope, receive, send)
 
 
 @dataclass(frozen=True)
@@ -332,6 +356,24 @@ class App:
         if not self._oauth_manager:
             raise RuntimeError("Cannot access token manager. OAuth not configured in App initialization.")
         return self._oauth_manager.token_manager
+
+    @property
+    def routes(self):
+        """Proxies to the inner Starlette app's routes.
+
+        This allows OpenTelemetry instrumentation (and similar middleware) to
+        discover route information via ``scope["app"].routes``.
+        """
+        return self._asgi_app.routes
+
+    @property
+    def state(self):
+        """Proxies to the inner Starlette app's state.
+
+        Ensures ``request.app.state`` continues to work when
+        ``scope["app"]`` points to this outer :class:`App` instance.
+        """
+        return self._asgi_app.state
 
     @staticmethod
     def _validate_install_fields(fields: list) -> tuple:
@@ -659,6 +701,12 @@ class App:
             starlette_app.state._webhook_handlers = self._webhook_handlers
             starlette_app.state._action_handlers = self._action_handlers
 
+        # Ensure scope["app"] points to this App (not the inner Starlette)
+        # so that OpenTelemetry and similar middleware can discover routes.
+        # add_middleware inserts at position 0, making it the outermost user
+        # middleware — it runs before any auto-instrumentation middleware.
+        starlette_app.add_middleware(_ScopeAppMiddleware, outer_app=self)  # type: ignore[arg-type]
+
         return starlette_app
 
     def _find_handler(self, event_type: str) -> _HandlerRegistration | None:
@@ -859,4 +907,5 @@ class App:
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send):
         """ASGI call interface to delegate to the underlying Starlette app."""
+        scope["app"] = self
         await self._asgi_app(scope, receive, send)
