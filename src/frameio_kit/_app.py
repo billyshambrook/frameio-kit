@@ -837,7 +837,7 @@ class App:
 
         # Check resource type filter for action events
         if handler_reg.resource_types and isinstance(event, ActionEvent):
-            if event.resource.type not in handler_reg.resource_types:
+            if any(r.type not in handler_reg.resource_types for r in event.resources):
                 types_str = ", ".join(sorted(handler_reg.resource_types))
                 msg = Message(
                     title="Action Not Available",

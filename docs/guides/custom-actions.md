@@ -86,7 +86,7 @@ from frameio_kit import ActionEvent
 
 async def handler(event: ActionEvent):
     print(event.type)           # "my_app.analyze"
-    print(event.resource_id)    # "abc123"
+    print(event.resource_ids)   # ["abc123", ...]
     print(event.user.id)        # "user_789"
     print(event.data)           # None (first call) or dict (form submission)
 ```
@@ -174,10 +174,10 @@ app = App()
     description="Send notification about this asset"
 )
 async def notify_team(event: ActionEvent):
-    print(f"Notification sent for {event.resource_id} by {event.user.id}")
+    print(f"Notification sent for {event.resource_ids} by {event.user.id}")
 
     # Send actual notification here
-    await send_notification(event.resource_id, event.user.id)
+    await send_notification(event.resource_ids, event.user.id)
 
     return Message(
         title="Notification Sent",
@@ -229,7 +229,7 @@ async def publish_asset(event: ActionEvent):
 )
 async def analyze_asset(event: ActionEvent):
     # Perform analysis
-    analysis_result = await perform_analysis(event.resource_id)
+    analysis_result = await perform_analysis(event.resource_ids)
 
     return Message(
         title="Analysis Complete",
@@ -392,7 +392,7 @@ app = App(oauth=OAuthConfig(client_id="...", client_secret="..."))
 
 async def redirect_after_auth(ctx: AuthCompleteContext) -> Response:
     return RedirectResponse(
-        f"https://myapp.com/setup?resource={ctx.event.resource_id}"
+        f"https://myapp.com/setup?resources={','.join(ctx.event.resource_ids)}"
     )
 
 @app.on_action(

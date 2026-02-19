@@ -49,7 +49,7 @@ def _make_action_event(account_id: str, workspace_id: str, event_type: str = "my
         action_id="act-1",
         interaction_id="int-1",
         project=Project(id="proj-1"),
-        resource=Resource(id="res-1", type="file"),
+        resources=[Resource(id="res-1", type="file")],
         type=event_type,
         user=User(id="user-1"),
         workspace=Workspace(id=workspace_id),

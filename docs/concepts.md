@@ -15,7 +15,7 @@ Before diving in, here are the Frame.io terms used throughout these docs:
 - **Account** — a billing entity in Frame.io. Organizations typically have one account. Referenced as `event.account_id` in handlers.
 - **Workspace** — a container within an account for organizing projects and teams. A single account can have multiple workspaces. Referenced as `event.workspace_id`.
 - **Project** — a collection of files, folders, and review sessions within a workspace.
-- **Asset** — any file or folder in Frame.io (videos, images, documents, folders). Also called a "resource" in event payloads — `event.resource_id` refers to the asset that triggered the event.
+- **Asset** — any file or folder in Frame.io (videos, images, documents, folders). Also called a "resource" in event payloads — `event.resource_id` (webhooks) or `event.resource_ids` (custom actions) refers to the asset(s) that triggered the event.
 - **Event type** — a string like `file.ready` or `comment.created` that identifies what happened. These are defined by Frame.io — see the [full list of event types](https://next.developer.frame.io/platform/docs/guides/webhooks#webhook-event-subscriptions). For custom actions, the event type (e.g., `my_app.analyze`) is a string you define and must match what you configure in Frame.io's developer settings.
 
 ## Architecture Overview

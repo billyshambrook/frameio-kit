@@ -72,7 +72,7 @@ async def process_file(event: ActionEvent):
         # Make API calls as the user
         file = await user_client.files.show(
             account_id=event.account_id,
-            file_id=event.resource_id
+            file_id=event.resource_ids[0]
         )
 
     return Message(
@@ -104,7 +104,7 @@ app = App(oauth=OAuthConfig(client_id="...", client_secret="..."))
 
 async def redirect_after_auth(ctx: AuthCompleteContext) -> Response:
     return RedirectResponse(
-        f"https://myapp.com/setup?resource={ctx.event.resource_id}"
+        f"https://myapp.com/setup?resources={','.join(ctx.event.resource_ids)}"
     )
 
 @app.on_action(

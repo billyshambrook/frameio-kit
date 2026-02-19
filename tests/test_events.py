@@ -28,7 +28,7 @@ def action_event_data():
         "action_id": "act_123",
         "interaction_id": "int_123",
         "project": {"id": "proj_123"},
-        "resource": {"id": "file_123", "type": "file"},
+        "resources": [{"id": "file_123", "type": "file"}],
         "user": {"id": "user_123"},
         "workspace": {"id": "ws_123"},
         "data": {"language": "en-US"},
@@ -77,10 +77,54 @@ def test_action_event_convenience_properties(action_event_data):
     event = ActionEvent(**action_event_data)
 
     # Test all convenience properties
-    assert event.resource_id == "file_123"
+    assert event.resource_ids == ["file_123"]
     assert event.user_id == "user_123"
     assert event.project_id == "proj_123"
     assert event.workspace_id == "ws_123"
+
+
+def test_action_event_legacy_resource_normalized_to_resources():
+    """Tests that legacy singular 'resource' payload is normalized to 'resources' list."""
+    event = ActionEvent.model_validate(
+        {
+            "type": "transcribe.file",
+            "account_id": "acc_123",
+            "action_id": "act_123",
+            "interaction_id": "int_123",
+            "project": {"id": "proj_123"},
+            "resource": {"id": "file_123", "type": "file"},
+            "user": {"id": "user_123"},
+            "workspace": {"id": "ws_123"},
+            "timestamp": 1234567890,
+        }
+    )
+    assert len(event.resources) == 1
+    assert event.resources[0].id == "file_123"
+    assert event.resources[0].type == "file"
+    assert event.resource_ids == ["file_123"]
+
+
+def test_action_event_multi_asset_payload():
+    """Tests that multi-asset payload with multiple resources works correctly."""
+    event = ActionEvent.model_validate(
+        {
+            "type": "transcribe.file",
+            "account_id": "acc_123",
+            "action_id": "act_123",
+            "interaction_id": "int_123",
+            "project": {"id": "proj_123"},
+            "resources": [
+                {"id": "file_1", "type": "file"},
+                {"id": "folder_1", "type": "folder"},
+                {"id": "file_2", "type": "version_stack"},
+            ],
+            "user": {"id": "user_123"},
+            "workspace": {"id": "ws_123"},
+            "timestamp": 1234567890,
+        }
+    )
+    assert len(event.resources) == 3
+    assert event.resource_ids == ["file_1", "folder_1", "file_2"]
 
 
 def test_webhook_event_convenience_properties(webhook_event_data):

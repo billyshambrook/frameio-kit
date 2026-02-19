@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ._events import ActionEvent, AnyEvent
+from ._events import ActionEvent, AnyEvent, WebhookEvent
 from ._middleware import Middleware, NextFunc
 from ._responses import AnyResponse
 
@@ -82,18 +82,23 @@ class OpenTelemetryMiddleware(Middleware):
         Returns:
             The response from the next middleware or handler.
         """
+        attributes: dict[str, str | list[str]] = {
+            "frameio.event.type": event.type,
+            "frameio.account.id": event.account_id,
+            "frameio.user.id": event.user_id,
+            "frameio.project.id": event.project_id,
+            "frameio.workspace.id": event.workspace_id,
+        }
+
+        if isinstance(event, WebhookEvent):
+            attributes["frameio.resource.id"] = event.resource_id
+        elif isinstance(event, ActionEvent):
+            attributes["frameio.resource.ids"] = event.resource_ids
+
         with self._tracer.start_as_current_span(
             f"frameio {event.type}",
             kind=self._span_kind,
-            attributes={
-                "frameio.event.type": event.type,
-                "frameio.account.id": event.account_id,
-                "frameio.resource.id": event.resource_id,
-                "frameio.resource.type": event.resource.type,
-                "frameio.user.id": event.user_id,
-                "frameio.project.id": event.project_id,
-                "frameio.workspace.id": event.workspace_id,
-            },
+            attributes=attributes,
         ) as span:
             if isinstance(event, ActionEvent):
                 span.set_attribute("frameio.action.id", event.action_id)

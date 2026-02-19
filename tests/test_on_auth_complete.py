@@ -35,7 +35,7 @@ _ACTION_EVENT_DATA = {
     "action_id": "act_123",
     "interaction_id": "int_456",
     "project": {"id": "proj_123"},
-    "resource": {"id": "file_123", "type": "file"},
+    "resources": [{"id": "file_123", "type": "file"}],
     "user": {"id": "user_789"},
     "workspace": {"id": "ws_123"},
     "data": None,
@@ -233,7 +233,7 @@ class TestCallbackOnAuthComplete:
         assert isinstance(ctx, AuthCompleteContext)
         assert ctx.event.type == "my_app.transcribe"
         assert ctx.event.user_id == "user_789"
-        assert ctx.event.resource_id == "file_123"
+        assert ctx.event.resource_ids[0] == "file_123"
 
     async def test_get_user_token_available_in_callback(self, storage, token_manager, state_serializer, oauth_client):
         """Test that get_user_token() works inside the on_auth_complete callback."""
