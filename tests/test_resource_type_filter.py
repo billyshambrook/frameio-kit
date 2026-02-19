@@ -12,12 +12,21 @@ def sample_secret():
     return "test_secret"
 
 
-def _make_action_payload(*, resource_type: str = "file", event_type: str = "my_app.transcribe") -> dict:
+def _make_action_payload(
+    *,
+    resource_type: str = "file",
+    resource_types: list[str] | None = None,
+    event_type: str = "my_app.transcribe",
+) -> dict:
+    if resource_types is not None:
+        resources = [{"id": f"res_{i}", "type": rt} for i, rt in enumerate(resource_types)]
+    else:
+        resources = [{"id": "res_123", "type": resource_type}]
     return {
         "type": event_type,
         "account_id": "acc_123",
         "project": {"id": "proj_123"},
-        "resource": {"id": "res_123", "type": resource_type},
+        "resources": resources,
         "user": {"id": "user_123"},
         "workspace": {"id": "ws_123"},
         "action_id": "act_123",
@@ -247,3 +256,69 @@ def test_validate_configuration_passes_for_valid_resource_types(sample_secret, m
 
     errors = app.validate_configuration()
     assert errors == []
+
+
+async def test_multi_asset_all_matching_types_accepted(sample_secret, create_valid_signature):
+    """Multi-asset payload where all resources match should call handler."""
+    call_log = []
+    app = App()
+
+    @app.on_action(
+        "my_app.transcribe",
+        name="Transcribe",
+        description="Transcribe files",
+        secret=sample_secret,
+        resource_type="file",
+    )
+    async def handler(event: ActionEvent):
+        call_log.append(event)
+        return Message(title="Done", description="Transcribed.")
+
+    payload = _make_action_payload(resource_types=["file", "file"])
+    body = json.dumps(payload).encode()
+    ts = int(time.time())
+    headers = {
+        "X-Frameio-Request-Timestamp": str(ts),
+        "X-Frameio-Signature": create_valid_signature(ts, body, sample_secret),
+    }
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/", content=body, headers=headers)
+
+    assert response.status_code == 200
+    assert response.json()["title"] == "Done"
+    assert len(call_log) == 1
+
+
+async def test_multi_asset_mixed_types_rejected(sample_secret, create_valid_signature):
+    """Multi-asset payload where some resources don't match should be rejected."""
+    call_log = []
+    app = App()
+
+    @app.on_action(
+        "my_app.transcribe",
+        name="Transcribe",
+        description="Transcribe files",
+        secret=sample_secret,
+        resource_type="file",
+    )
+    async def handler(event: ActionEvent):
+        call_log.append(event)
+        return Message(title="Done", description="Transcribed.")
+
+    payload = _make_action_payload(resource_types=["file", "folder"])
+    body = json.dumps(payload).encode()
+    ts = int(time.time())
+    headers = {
+        "X-Frameio-Request-Timestamp": str(ts),
+        "X-Frameio-Signature": create_valid_signature(ts, body, sample_secret),
+    }
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app), base_url="http://test") as client:
+        response = await client.post("/", content=body, headers=headers)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["title"] == "Action Not Available"
+    assert "file" in data["description"]
+    assert len(call_log) == 0

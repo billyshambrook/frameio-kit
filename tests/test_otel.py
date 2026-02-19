@@ -57,7 +57,7 @@ def action_payload():
         "action_id": "act_789",
         "interaction_id": "int_012",
         "project": {"id": "proj_456"},
-        "resource": {"id": "file_456", "type": "version_stack"},
+        "resources": [{"id": "file_456", "type": "version_stack"}],
         "user": {"id": "user_456"},
         "workspace": {"id": "ws_456"},
         "data": {"language": "en-US"},
@@ -97,10 +97,10 @@ async def test_webhook_creates_span_with_correct_attributes(
     assert attrs["frameio.event.type"] == "file.ready"
     assert attrs["frameio.account.id"] == "acc_123"
     assert attrs["frameio.resource.id"] == "file_123"
-    assert attrs["frameio.resource.type"] == "file"
     assert attrs["frameio.user.id"] == "user_123"
     assert attrs["frameio.project.id"] == "proj_123"
     assert attrs["frameio.workspace.id"] == "ws_123"
+    assert "frameio.resource.type" not in attrs
     assert "frameio.action.id" not in attrs
     assert "frameio.interaction.id" not in attrs
 
@@ -135,8 +135,8 @@ async def test_action_creates_span_with_action_attributes(
     attrs = dict(span.attributes)
     assert attrs["frameio.event.type"] == "transcribe.file"
     assert attrs["frameio.account.id"] == "acc_456"
-    assert attrs["frameio.resource.id"] == "file_456"
-    assert attrs["frameio.resource.type"] == "version_stack"
+    assert tuple(attrs["frameio.resource.ids"]) == ("file_456",)
+    assert "frameio.resource.type" not in attrs
     assert attrs["frameio.action.id"] == "act_789"
     assert attrs["frameio.interaction.id"] == "int_012"
 

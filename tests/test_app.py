@@ -66,10 +66,12 @@ def action_payload(webhook_payload) -> dict:
     """A sample action payload with form data."""
     payload = webhook_payload.copy()
     del payload["account"]  # Custom actions have a flat account_id
+    resource = payload.pop("resource")
     payload["account_id"] = "acc_123"
     payload["action_id"] = "act_123"
     payload["interaction_id"] = "int_123"
     payload["type"] = "transcribe.file"
+    payload["resources"] = [resource]
     payload["data"] = {"language": "en-US"}
     return payload
 
@@ -189,7 +191,7 @@ async def test_handle_request_serializes_ui_response(action_payload, sample_secr
 
     @app.on_action("transcribe.file", name="Transcribe", description="...", secret=sample_secret)
     async def handler(event: ActionEvent):
-        return Message(title="Success", description=f"File {event.resource_id} sent.")
+        return Message(title="Success", description=f"File {event.resource_ids[0]} sent.")
 
     body = json.dumps(action_payload).encode()
     ts = int(time.time())

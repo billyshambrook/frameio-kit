@@ -14,7 +14,7 @@ differences in the payloads, while convenience properties like `account_id` and
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, computed_field
+from pydantic import BaseModel, computed_field, model_validator
 
 
 ResourceType = Literal["file", "folder", "version_stack"]
@@ -81,7 +81,6 @@ class _BaseEvent(BaseModel):
 
     Attributes:
         project: The project context for the event.
-        resource: The resource (e.g., file, folder) that the event is about.
         type: The specific event type string (e.g., 'file.ready').
         user: The user who triggered the event.
         workspace: The workspace where the event occurred.
@@ -91,21 +90,10 @@ class _BaseEvent(BaseModel):
     """
 
     project: Project
-    resource: Resource
     type: str
     user: User
     workspace: Workspace
     timestamp: int
-
-    @computed_field
-    @property
-    def resource_id(self) -> str:
-        """A convenience property to directly access the resource's ID.
-
-        Returns:
-            The unique identifier (UUID) of the event's primary resource.
-        """
-        return self.resource.id
 
     @computed_field
     @property
@@ -145,9 +133,11 @@ class WebhookEvent(_BaseEvent):
 
     Attributes:
         account: The account context object for the event.
+        resource: The resource (e.g., file, folder) that the event is about.
     """
 
     account: Account
+    resource: Resource
 
     @computed_field
     @property
@@ -158,6 +148,16 @@ class WebhookEvent(_BaseEvent):
             The unique identifier (UUID) of the account.
         """
         return self.account.id
+
+    @computed_field
+    @property
+    def resource_id(self) -> str:
+        """A convenience property to directly access the resource's ID.
+
+        Returns:
+            The unique identifier (UUID) of the event's primary resource.
+        """
+        return self.resource.id
 
 
 class ActionEvent(_BaseEvent):
@@ -173,6 +173,8 @@ class ActionEvent(_BaseEvent):
         interaction_id: A unique ID for a sequence of interactions, used to
             correlate steps in a multi-step custom action (e.g., a form
             submission).
+        resources: A list of resources targeted by this action. Multi-asset
+            custom actions can target up to 100 assets in a single request.
         data: A dictionary containing submitted form data. This will be `None`
             for the initial trigger of an action before a form is displayed.
             When a form is submitted, the keys of this dictionary will match
@@ -182,7 +184,26 @@ class ActionEvent(_BaseEvent):
     account_id: str
     action_id: str
     interaction_id: str
+    resources: list[Resource]
     data: dict[str, Any] | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_resource_to_resources(cls, data: Any) -> Any:
+        """Normalize legacy singular ``resource`` payload to ``resources`` list."""
+        if isinstance(data, dict) and "resource" in data and "resources" not in data:
+            data = {**data, "resources": [data.pop("resource")]}
+        return data
+
+    @computed_field
+    @property
+    def resource_ids(self) -> list[str]:
+        """A convenience property to directly access all resource IDs.
+
+        Returns:
+            A list of unique identifiers (UUIDs) of the targeted resources.
+        """
+        return [r.id for r in self.resources]
 
     @computed_field
     @property
