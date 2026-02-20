@@ -347,7 +347,7 @@ wheels = [
 
 [[package]]
 name = "frameio"
-version = "0.2.1"
+version = "0.2.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
@@ -355,9 +355,9 @@ dependencies = [
     { name = "pydantic-core" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c5/62/1f74234a685707cc74e542600cae003632ac9e50879f72660469cf6e7be6/frameio-0.2.1.tar.gz", hash = "sha256:6574f08ca30f4c4317a8a49cd3421e0e3f66363d59404b65337211c33a91e4e7", size = 135229, upload-time = "2026-02-06T21:03:19.008Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c8/1c/44515d185965c4277d4b0e119310094501a855cdb9e900ed72e36b30c25a/frameio-0.2.2.tar.gz", hash = "sha256:2df6890e174515f4b3b6deabcf9556e868fcf2c2e670dc5c17960124f3119d3c", size = 137534, upload-time = "2026-02-19T19:57:15.028Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/12/0d/e5b62db48b8a6f6ab6d664ef32518fdc215bec828e067f0194ac839dfe56/frameio-0.2.1-py3-none-any.whl", hash = "sha256:0eea350d6f5a6cc8ecec8f0c928bf5a36aff7a0075423d396e07bce657297785", size = 303356, upload-time = "2026-02-06T21:03:17.492Z" },
+    { url = "https://files.pythonhosted.org/packages/63/2a/c450822e5b59b5320ac8b9c56aca4285f84ffaba2bbc8d8763c85295ed53/frameio-0.2.2-py3-none-any.whl", hash = "sha256:aa5737f917e2beb938758168f045f1f6443c1b63dbd79214ef1172bce609ab6c", size = 304953, upload-time = "2026-02-19T19:57:13.37Z" },
 ]
 
 [[package]]
